@@ -17,14 +17,27 @@ A high-performance, keyboard-driven navigation engine for Rule34. This extension
 *   **Boutique Aesthetic**: A custom dark-mode interface built with premium glassmorphism and gold accents.
 *   **Structural Hardening**: Enforced structural integrity to prevent site-level CSS interference.
 
-## 🛠️ Installation (Developers)
+## 🌐 Quick Start (Easy Installation)
 
-1.  Clone this repository.
-2.  Install dependencies: `npm install`
-3.  Build the project: `npm run build`
-4.  In Chrome, go to `chrome://extensions/`.
-5.  Enable "Developer mode".
-6.  Click "Load unpacked" and select the `.output/chrome-mv3` folder.
+If you aren't familiar with Git or coding, follow these steps to get R34 Pro running in seconds:
+
+1.  **Download**: Click the green **Code** button at the top of this page and select **Download ZIP**.
+2.  **Unzip**: Extract the downloaded folder to a location on your computer (like your Desktop).
+3.  **Open Chrome**: Navigate to `chrome://extensions/` in your browser.
+4.  **Developer Mode**: In the top-right corner, toggle the **Developer mode** switch to **ON**.
+5.  **Load the App**: Click the **Load unpacked** button in the top-left.
+6.  **Select Folder**: Navigate inside the unzipped folder and select the folder named:
+    `r34pro/.output/chrome-mv3`
+7.  **Done**: Go to Rule34.xxx and enjoy the high-performance navigation!
+
+## 🛠️ Developer Setup (Build from Source)
+
+For those who want to modify the code:
+
+1.  Clone this repository: `git clone https://github.com/GlorbyZ/R34Pro.git`
+2.  Run `npm install` to get dependencies.
+3.  Run `npm run build` to generate the production files.
+4.  Load the extension from the `.output/chrome-mv3` directory.
 
 ## 🧪 Technical Context
 *   **Framework**: [WXT](https://wxt.dev/) (Web Extension Toolbox)
