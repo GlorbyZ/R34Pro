@@ -1,0 +1,43 @@
+---
+---
+<script is:inline>
+    // Global UI State & Events
+    window.UI = {
+        sidebarOpened: false,
+        toggleSidebar() {
+            this.sidebarOpened = !this.sidebarOpened;
+            document.body.getAttribute('data-sidebar-opened') === 'true' 
+                ? document.body.setAttribute('data-sidebar-opened', 'false')
+                : document.body.setAttribute('data-sidebar-opened', 'true');
+        },
+        openModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) modal.showModal();
+        }
+    };
+
+    // Initialize sidebar state on load
+    document.addEventListener('DOMContentLoaded', () => {
+        document.body.setAttribute('data-sidebar-opened', 'false');
+        
+        // Setup navbar toggle
+        const toggleBtn = document.getElementById('nav-toggle');
+        toggleBtn?.addEventListener('click', () => window.UI.toggleSidebar());
+    });
+</script>
+
+<style is:global>
+    /* Data attribute based layout shifts */
+    body[data-sidebar-opened="true"] #sidebar-closed {
+        width: 220px;
+    }
+    
+    body[data-sidebar-opened="true"] #sidebar-closed .group span {
+        display: inline-block !important;
+    }
+
+    /* Transition for layout */
+    #sidebar-closed {
+        transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+</style>

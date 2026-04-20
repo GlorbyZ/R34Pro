@@ -1,0 +1,42 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Sidebar from '../components/Sidebar.astro';
+import Navbar from '../components/Navbar.astro';
+import LiveView from '../components/LiveView.astro';
+import ActionMenu from '../components/ActionMenu.astro';
+import GlobalScripts from '../components/GlobalScripts.astro';
+---
+
+<Layout title="Candy AI: AI Girlfriend App | Chat w/ Pics, Voice, & Video">
+	<GlobalScripts />
+	<Navbar />
+	
+	<main class="flex min-h-screen pt-[64px]">
+		<!-- Sidebar Space -->
+		<div class="hidden lg:block w-[100px] flex-shrink-0">
+			<Sidebar />
+		</div>
+		
+		<!-- Main Content Area -->
+		<div class="flex-1 flex flex-col items-center justify-center p-8 bg-black-default overflow-hidden relative">
+			<!-- Background Glows -->
+			<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/10 rounded-full blur-[120px] pointer-events-none"></div>
+			
+			<div class="flex flex-col lg:flex-row gap-10 items-start justify-center relative z-10 w-fit mx-auto">
+				<!-- Live Player Section -->
+				<LiveView />
+				
+				<!-- Action Menu Section -->
+				<ActionMenu />
+			</div>
+		</div>
+	</main>
+</Layout>
+
+<style>
+	/* Full height scroll container */
+	main {
+		height: calc(100vh - 64px);
+		overflow: hidden;
+	}
+</style>

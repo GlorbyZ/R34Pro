@@ -1,0 +1,5 @@
+# R34 Pro v1.7.0 Backup
+(Reference the STABLE_BACKUP_v1.7.md artifact for full source code)
+Version: 1.7.0
+Status: Production Ready
+Features: WASD Navigation, Hardened Archival Engine, High-Fidelity Lightbox.

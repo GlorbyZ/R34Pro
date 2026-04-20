@@ -1,0 +1,320 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+:root {
+  /* Premium Void & Gold Theme (Obsidian Default) */
+  --theme-primary: #d4af37;
+  --theme-bright: #f9d71c;
+  --theme-dark: #996515;
+  --theme-muted: #4a3b1a;
+  --theme-glow: rgba(212, 175, 55, 0.4);
+  --theme-glow-strong: rgba(212, 175, 55, 0.7);
+
+  --void-black: #000000;
+  --void-dark: #050505;
+  --void-surface: #0a0a0a;
+  --void-elevated: #111111;
+  --void-border: #1a1a1a;
+  
+  --text-primary: #ffffff;
+  --text-secondary: #d1d1d1;
+  --text-muted: #71717a;
+  
+  --glass-bg: rgba(0, 0, 0, 0.85);
+  --glass-border: rgba(255, 255, 255, 0.08); /* Generic glass border base */
+  --glass-highlight: rgba(255, 255, 255, 0.05);
+}
+
+/* THEME: RUBY */
+body[data-theme='ruby'] {
+  --theme-primary: #e11d48;
+  --theme-bright: #fb7185;
+  --theme-dark: #9f1239;
+  --theme-muted: #4c0519;
+  --theme-glow: rgba(225, 29, 72, 0.4);
+  --theme-glow-strong: rgba(225, 29, 72, 0.7);
+}
+
+/* THEME: EMERALD */
+body[data-theme='emerald'] {
+  --theme-primary: #10b981;
+  --theme-bright: #34d399;
+  --theme-dark: #065f46;
+  --theme-muted: #064e3b;
+  --theme-glow: rgba(16, 185, 129, 0.4);
+  --theme-glow-strong: rgba(16, 185, 129, 0.7);
+}
+
+/* THEME: COBALT */
+body[data-theme='cobalt'] {
+  --theme-primary: #2563eb;
+  --theme-bright: #60a5fa;
+  --theme-dark: #1e40af;
+  --theme-muted: #1e3a8a;
+  --theme-glow: rgba(37, 99, 235, 0.4);
+  --theme-glow-strong: rgba(37, 99, 235, 0.7);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html:has(body.void-active) {
+  overflow: hidden !important;
+  height: 100%;
+}
+
+body.void-active {
+  background-color: var(--void-black) !important;
+  color: var(--text-primary) !important;
+  font-family: 'Inter', sans-serif !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  min-height: 100%;
+}
+
+/* Hide original content only when engine is active */
+body.void-active > *:not(.void-navigator-root) {
+  display: none !important;
+}
+
+/* Extension Root Container */
+#reframer-extension-root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 999999;
+  pointer-events: none;
+}
+
+#reframer-extension-root > * {
+  pointer-events: auto;
+}
+
+/* Premium Glass Panels */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 
+              inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.glass-panel:hover {
+  border-color: var(--theme-primary);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8), 
+              0 0 20px var(--theme-glow);
+}
+
+.glass-panel-heavy {
+  background: rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 80px 160px rgba(0, 0, 0, 1), 
+              inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+/* Premium Theme Buttons */
+.btn-theme {
+  background: linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-dark) 100%) !important;
+  color: white;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 15px var(--theme-glow);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.btn-theme:hover {
+  background: linear-gradient(135deg, var(--theme-bright) 0%, var(--theme-primary) 100%) !important;
+  box-shadow: 0 6px 25px var(--theme-glow-strong) !important;
+  transform: translateY(-2px) scale(1.02) !important;
+}
+
+.btn-theme:active {
+  opacity: 0.8;
+}
+
+/* Void Sidebar Styling */
+.sidebar-blade {
+  background: linear-gradient(180deg, rgba(10,10,10,0.95) 0%, rgba(0,0,0,1) 100%);
+  border-right: 1px solid var(--void-border);
+  box-shadow: 20px 0 50px rgba(0,0,0,0.5);
+  transition: all 0.4s ease;
+}
+
+/* Liquid Theme Animation */
+@keyframes liquid-theme {
+  0% { background-position: 0% 50%; opacity: 0.8; }
+  50% { background-position: 100% 50%; opacity: 1; }
+  100% { background-position: 0% 50%; opacity: 0.8; }
+}
+
+.liquid-theme-bar {
+  background: linear-gradient(90deg, var(--theme-dark), var(--theme-bright), var(--theme-dark));
+  background-size: 200% 200%;
+  animation: liquid-theme 3s ease infinite;
+  box-shadow: 0 0 10px var(--theme-glow);
+}
+
+/* Premium Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--void-black);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--void-elevated);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-primary);
+}
+
+/* Hide scrollbar for clean look */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Premium Inputs */
+input, textarea, select {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid var(--void-border) !important;
+  color: var(--text-primary) !important;
+  border-radius: 6px !important;
+  padding: 10px 14px !important;
+  font-size: 14px !important;
+  transition: all 0.3s ease !important;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none !important;
+  border-color: var(--theme-primary) !important;
+  box-shadow: 0 0 15px var(--theme-glow) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Gold Text Gradients */
+.text-gold {
+  background: linear-gradient(135deg, var(--theme-bright) 0%, var(--theme-primary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Theme Glow Effects */
+.glow-theme {
+  box-shadow: 0 0 20px var(--theme-glow) !important;
+}
+
+.glow-theme-strong {
+  box-shadow: 0 0 30px var(--theme-glow-strong) !important;
+}
+
+/* Component Styling Hooks */
+.relic-item {
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  transition: all 0.3s ease;
+}
+
+.relic-item:hover {
+  background: rgba(212, 175, 55, 0.03);
+  border-left: 2px solid var(--gold-primary);
+}
+
+/* Lightbox Console & Controls */
+.lightbox-console {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
+  border-radius: 1.5rem;
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  transition: all 0.3s ease;
+}
+
+.lightbox-progress-track {
+  width: 400px;
+  height: 6px;
+  background: var(--void-surface);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 99px;
+  overflow: hidden;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.lightbox-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--theme-dark), var(--theme-bright));
+  box-shadow: 0 0 15px var(--theme-glow-strong);
+  transition: width 0.1s linear;
+}
+
+.lightbox-control-btn:hover {
+  color: var(--theme-bright);
+  transform: scale(1.1);
+  text-shadow: 0 0 10px var(--theme-glow);
+}
+
+/* Absolute Specificity for Play Button to kill residual Rose infection */
+.void-navigator-root .lightbox-console .lightbox-play-btn {
+  width: 64px !important;
+  height: 64px !important;
+  background: linear-gradient(135deg, var(--theme-primary), var(--theme-dark)) !important;
+  color: #000 !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-shadow: 0 0 30px var(--theme-glow), 0 0 0 4px var(--theme-glow) !important;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+  cursor: pointer !important;
+  border: none !important;
+  z-index: 100 !important;
+}
+
+.void-navigator-root .lightbox-console .lightbox-play-btn:hover {
+  transform: scale(1.15) rotate(8deg) !important;
+  box-shadow: 0 0 45px var(--theme-glow-strong), 0 0 0 6px var(--theme-glow-strong) !important;
+  background: linear-gradient(135deg, var(--theme-bright), var(--theme-primary)) !important;
+}
+
+/* Global Lightbox Spinner */
+.void-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--theme-primary);
+  border-radius: 50%;
+  animation: void-spin 1s linear infinite;
+  box-shadow: 0 0 15px var(--theme-glow);
+}
+
+@keyframes void-spin {
+  to { transform: rotate(360deg); }
+}
