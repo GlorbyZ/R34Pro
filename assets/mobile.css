@@ -194,12 +194,14 @@ html.r34pro-android .void-navigator-root .lightbox-mobile-controls.lightbox-ui-h
   transform: translateY(12px) !important;
 }
 
-html.r34pro-android .void-navigator-root .lightbox-mobile-controls .glass-panel {
+html.r34pro-android .void-navigator-root .lightbox-mobile-controls .glass-panel,
+html.r34pro-android .void-navigator-root .lightbox-slideshow-panel {
   width: 100%;
   justify-content: center;
   flex-wrap: wrap;
   gap: 0.85rem !important;
   padding: 0.85rem 1rem !important;
+  overflow: visible !important;
 }
 
 html.r34pro-android .void-navigator-root .desktop-only-nav-overlay {
@@ -320,6 +322,13 @@ html.r34pro-android .void-navigator-root .mobile-top-bar .text-\[10px\] {
     flex-wrap: wrap;
     gap: 0.75rem !important;
     padding: 0.75rem 1rem !important;
+    overflow: visible !important;
+  }
+
+  .void-navigator-root .lightbox-chrome-bottom,
+  .void-navigator-root .lightbox-slideshow-panel,
+  .void-navigator-root .boutique-select {
+    overflow: visible !important;
   }
 
   .void-navigator-root .mobile-swipe-hint {
