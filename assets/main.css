@@ -263,6 +263,21 @@ input:focus, textarea:focus, select:focus {
   pointer-events: none;
 }
 
+.lightbox-chrome-bottom,
+.lightbox-slideshow-panel,
+.boutique-select {
+  overflow: visible !important;
+}
+
+.boutique-select-menu {
+  pointer-events: auto !important;
+  touch-action: manipulation;
+}
+
+.boutique-select-option {
+  min-height: 44px;
+}
+
 .lightbox-console {
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(20px);

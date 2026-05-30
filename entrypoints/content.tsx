@@ -137,7 +137,7 @@ const LightboxChromeLayer = ({
     </div>
 
     <div
-      className={`lightbox-chrome-bottom lightbox-mobile-controls pointer-events-auto absolute inset-x-3 flex flex-col items-stretch gap-3 transition-all duration-300 ${isAndroidApp && !lightboxUiVisible ? 'lightbox-ui-hidden opacity-0 pointer-events-none' : 'opacity-100'} ${isMobile ? 'translate-y-0' : 'opacity-0 translate-y-4 group-hover/lightbox:opacity-100 group-hover/lightbox:translate-y-0'}`}
+      className={`lightbox-chrome-bottom lightbox-mobile-controls pointer-events-auto absolute inset-x-3 flex flex-col items-stretch gap-3 transition-all duration-300 overflow-visible ${isAndroidApp && !lightboxUiVisible ? 'lightbox-ui-hidden opacity-0 pointer-events-none' : 'opacity-100'} ${isMobile ? 'translate-y-0' : 'opacity-0 translate-y-4 group-hover/lightbox:opacity-100 group-hover/lightbox:translate-y-0'}`}
       style={{ bottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
       onClick={(event) => {
         event.stopPropagation();
@@ -149,12 +149,13 @@ const LightboxChromeLayer = ({
           <div className="lightbox-progress-fill" style={{ width: `${(slideTick / slideMaxTicks) * 100}%` }} />
         </div>
       )}
-      <div className={`glass-panel bg-black/70 px-4 py-3 rounded-2xl flex items-center justify-center gap-4 shadow-[0_0_30px_rgba(0,0,0,0.8)] border border-white/10 flex-wrap ${isPlaying || (isAndroidApp && !lightboxUiVisible) ? '' : 'animate-in fade-in slide-in-from-bottom-5 duration-500'}`}>
+      <div className={`lightbox-slideshow-panel glass-panel bg-black/70 px-4 py-3 rounded-2xl flex items-center justify-center gap-4 shadow-[0_0_30px_rgba(0,0,0,0.8)] border border-white/10 flex-wrap overflow-visible ${isPlaying || (isAndroidApp && !lightboxUiVisible) ? '' : 'animate-in fade-in slide-in-from-bottom-5 duration-500'}`}>
         <BoutiqueSelect
           value={slideshowInterval}
           onChange={setSlideshowInterval}
           options={[2, 3, 5, 8, 10]}
           title="Slideshow Interval"
+          dropUp
         />
         <div className="w-px h-8 bg-white/10 hidden sm:block" />
         <button
@@ -278,31 +279,41 @@ const PostVideoPlayer = forwardRef(function PostVideoPlayer(
   );
 });
 
-const BoutiqueSelect = ({ value, onChange, options, title }: {
+const BoutiqueSelect = ({ value, onChange, options, title, dropUp }: {
   value: number, 
   onChange: (v: number) => void, 
   options: number[],
   title?: string
+  dropUp?: boolean
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
+  const selectOption = (opt: number) => {
+    onChange(opt);
+    setIsOpen(false);
+  };
+
   return (
-    <div className="relative" ref={containerRef} onClick={e => e.stopPropagation()}>
+    <div className="boutique-select relative z-[100000012]" ref={containerRef} onClick={(e) => e.stopPropagation()}>
       <button 
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="bg-black/40 border border-white/10 text-[10px] font-bold text-white px-3 py-2 rounded-lg flex items-center gap-3 hover:border-theme-primary/50 transition-all cursor-pointer min-w-[65px] justify-between shadow-inner"
+        className="boutique-select-trigger bg-black/40 border border-white/10 text-[10px] font-bold text-white px-3 py-2 rounded-lg flex items-center gap-3 hover:border-theme-primary/50 transition-all cursor-pointer min-w-[65px] min-h-[44px] justify-between shadow-inner touch-manipulation"
         title={title}
       >
         <span>{value}s</span>
@@ -310,13 +321,23 @@ const BoutiqueSelect = ({ value, onChange, options, title }: {
       </button>
       
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-full glass-panel overflow-hidden z-[1000] animate-in fade-in slide-in-from-top-2 duration-200 shadow-2xl border border-white/10">
+        <div
+          className={`boutique-select-menu absolute left-0 w-full min-w-[72px] glass-panel overflow-hidden z-[100000013] animate-in fade-in duration-200 shadow-2xl border border-white/10 pointer-events-auto touch-manipulation ${
+            dropUp ? 'bottom-full mb-2 slide-in-from-bottom-2' : 'top-full mt-2 slide-in-from-top-2'
+          }`}
+        >
           <div className="flex flex-col p-1 bg-zinc-950/90 backdrop-blur-xl">
             {options.map(opt => (
               <button
                 key={opt}
-                onClick={() => { onChange(opt); setIsOpen(false); }}
-                className={`w-full px-3 py-2 text-[10px] font-bold text-left rounded-md transition-all cursor-pointer ${value === opt ? 'bg-theme-primary text-black' : 'text-zinc-400 hover:bg-white/10 hover:text-white'}`}
+                type="button"
+                onClick={() => selectOption(opt)}
+                onTouchEnd={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  selectOption(opt);
+                }}
+                className={`boutique-select-option w-full px-3 py-2.5 text-[10px] font-bold text-left rounded-md transition-all cursor-pointer min-h-[44px] touch-manipulation ${value === opt ? 'bg-theme-primary text-black' : 'text-zinc-400 hover:bg-white/10 hover:text-white'}`}
               >
                 {opt}s
               </button>
@@ -1026,7 +1047,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
     const isChromeTarget = (target: EventTarget | null) => {
       if (!(target instanceof Element)) return false;
-      return !!target.closest('.lightbox-chrome-root, .lightbox-chrome-top, .lightbox-chrome-bottom, .lightbox-chrome-btn, .lightbox-top-actions, .lightbox-mobile-controls, button, a, input, select');
+      return !!target.closest('.lightbox-chrome-root, .lightbox-chrome-top, .lightbox-chrome-bottom, .lightbox-chrome-btn, .lightbox-top-actions, .lightbox-mobile-controls, .boutique-select, .boutique-select-menu, .boutique-select-option, button, a, input, select');
     };
 
     const onTouchStart = (event: TouchEvent) => {
