@@ -119,11 +119,16 @@ class MainActivity : AppCompatActivity() {
                         moveTaskToBack(true)
                         return
                     }
-                    if (webView.canGoBack()) {
-                        webView.goBack()
-                    } else {
-                        isEnabled = false
-                        onBackPressedDispatcher.onBackPressed()
+                    webView.evaluateJavascript(
+                        "(function(){return !!(window.__r34proHandleBack&&window.__r34proHandleBack());})();"
+                    ) { result ->
+                        if (result == "true") return@evaluateJavascript
+                        if (webView.canGoBack()) {
+                            webView.goBack()
+                        } else {
+                            isEnabled = false
+                            onBackPressedDispatcher.onBackPressed()
+                        }
                     }
                 }
             }

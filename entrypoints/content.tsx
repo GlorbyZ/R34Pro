@@ -195,6 +195,9 @@ const App = ({ initialData }: { initialData: PageData }) => {
   const scaleRef = useRef(1);
   const positionRef = useRef({ x: 0, y: 0 });
   const lightboxOpenRef = useRef(lightboxOpen);
+  const lightboxHistoryPushedRef = useRef(false);
+  const openLightboxRef = useRef<() => void>(() => {});
+  const closeLightboxRef = useRef<() => void>(() => {});
   const navigateToPostRef = useRef<(direction: 'prev' | 'next') => void>(() => {});
   const resetLightboxUiTimerRef = useRef<() => void>(() => {});
   const toggleAndroidLightboxUiRef = useRef<() => void>(() => {});
@@ -220,6 +223,33 @@ const App = ({ initialData }: { initialData: PageData }) => {
   useEffect(() => { positionRef.current = position; }, [position]);
   useEffect(() => { lightboxOpenRef.current = lightboxOpen; }, [lightboxOpen]);
   useEffect(() => { isAndroidAppRef.current = isAndroidApp; }, [isAndroidApp]);
+
+  const openLightbox = useCallback(() => {
+    setLightboxOpen(true);
+  }, []);
+
+  const closeLightbox = useCallback(() => {
+    if (lightboxHistoryPushedRef.current) {
+      lightboxHistoryPushedRef.current = false;
+      history.back();
+      return;
+    }
+    setLightboxOpen(false);
+  }, []);
+
+  useEffect(() => { openLightboxRef.current = openLightbox; }, [openLightbox]);
+  useEffect(() => { closeLightboxRef.current = closeLightbox; }, [closeLightbox]);
+
+  useEffect(() => {
+    (window as any).__r34proHandleBack = () => {
+      if (!lightboxOpenRef.current) return false;
+      closeLightboxRef.current();
+      return true;
+    };
+    return () => {
+      delete (window as any).__r34proHandleBack;
+    };
+  }, []);
 
   useEffect(() => {
     (window as any).__r34proDismissLoadingShell?.();
@@ -395,6 +425,25 @@ const App = ({ initialData }: { initialData: PageData }) => {
   );
 
   const postId = data.type === 'post' ? data.id : null;
+
+  useEffect(() => {
+    lightboxHistoryPushedRef.current = false;
+  }, [postId]);
+
+  useEffect(() => {
+    if (!lightboxOpen || data.type !== 'post') return;
+    if (lightboxHistoryPushedRef.current) return;
+
+    const withLb = new URL(window.location.href);
+    const withoutLb = new URL(window.location.href);
+    withoutLb.searchParams.delete('r34_lb');
+    withoutLb.searchParams.delete('r34_ui');
+    withLb.searchParams.set('r34_lb', '1');
+
+    history.replaceState({ r34Lightbox: false }, '', withoutLb.toString());
+    history.pushState({ r34Lightbox: true }, '', withLb.toString());
+    lightboxHistoryPushedRef.current = true;
+  }, [lightboxOpen, data.type, postId]);
 
   useEffect(() => {
     setScale(1);
@@ -640,12 +689,13 @@ const App = ({ initialData }: { initialData: PageData }) => {
       // Lightbox Toggle (F)
       if (e.key.toLowerCase() === 'f') {
         e.preventDefault();
-        setLightboxOpen(prev => !prev);
+        if (lightboxOpenRef.current) closeLightboxRef.current();
+        else openLightboxRef.current();
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [navigateToPost, setIsPlaying, setLightboxOpen, isPlaying, lightboxOpen]);
+  }, [navigateToPost, setIsPlaying, isPlaying, lightboxOpen]);
 
   useEffect(() => {
     if (!isMobile || data.type !== 'post') return;
@@ -753,7 +803,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
       }
 
       if (lightboxOpenRef.current && deltaY > 90 && deltaY > Math.abs(deltaX) * 1.3) {
-        setLightboxOpen(false);
+        closeLightboxRef.current();
         gesture = 'none';
         touchGestureRef.current = 'none';
         return;
@@ -775,7 +825,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
         if (lightboxOpenRef.current) {
           if (isAndroidAppRef.current) toggleAndroidLightboxUiRef.current();
         } else {
-          setLightboxOpen(true);
+          openLightboxRef.current();
         }
       }
 
@@ -795,6 +845,11 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
   useEffect(() => {
     const onPopState = () => {
+      if (lightboxOpenRef.current) {
+        setLightboxOpen(false);
+        lightboxHistoryPushedRef.current = false;
+        return;
+      }
       window.location.reload();
     };
     window.addEventListener('popstate', onPopState);
@@ -869,7 +924,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
       // Ensure any logic here DOES NOT call preventDefault() for ArrowKeys
       // because we want the site's native logic to fire.
-      if (e.key === 'Escape') setLightboxOpen(false);
+      if (e.key === 'Escape') closeLightboxRef.current();
       if (e.key === ' ') { e.preventDefault(); setIsPlaying(p => !p); }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -1503,7 +1558,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
             <>
               <button
                 type="button"
-                onClick={() => setLightboxOpen(true)}
+                onClick={() => openLightbox()}
                 className="mobile-touch-btn w-11 h-11 rounded-xl bg-zinc-900 border border-white/10 text-white flex items-center justify-center active:scale-95 transition-all"
                 title="Fullscreen"
               >
@@ -1545,7 +1600,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
           </button>
           <button
             type="button"
-            onClick={() => setLightboxOpen(true)}
+            onClick={() => openLightbox()}
             className="mobile-touch-btn w-12 h-12 rounded-2xl btn-theme border border-white/10 text-black flex items-center justify-center active:scale-95 transition-all"
             title="Lightbox"
           >
@@ -1913,11 +1968,11 @@ const App = ({ initialData }: { initialData: PageData }) => {
                if (!lightboxUiVisible) {
                  resetLightboxUiTimer();
                } else {
-                 setLightboxOpen(false);
+                 closeLightbox();
                }
                return;
              }
-             setLightboxOpen(false);
+             closeLightbox();
           }}
         >
           {loading && (
@@ -2026,7 +2081,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
             </button>
             <button 
                className="w-12 h-12 rounded-full bg-white/5 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all border border-white/10 hover:scale-110 active:scale-95 shadow-xl"
-               onClick={() => setLightboxOpen(false)}
+               onClick={() => closeLightbox()}
                title="Close Lightbox (Esc)"
             >
                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
