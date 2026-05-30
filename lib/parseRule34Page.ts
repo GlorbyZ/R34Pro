@@ -26,6 +26,7 @@ export interface ListItem {
   thumbUrl: string;
   tags: string[];
   mediaType: 'image' | 'video';
+  removeFavoriteUrl?: string;
 }
 
 export interface ListData {
@@ -34,6 +35,9 @@ export interface ListData {
   searchTags: string;
   title: string;
   pagination: PaginationLink[];
+  listKind: 'search' | 'favorites';
+  favoritesUserId?: string;
+  listTitle?: string;
 }
 
 export interface PaginationLink {
@@ -42,7 +46,23 @@ export interface PaginationLink {
   isCurrent: boolean;
 }
 
-export type PageData = PostData | ListData;
+export interface AccountNavLink {
+  label: string;
+  href: string;
+  description?: string;
+}
+
+export interface AccountData {
+  type: 'account';
+  variant: 'home' | 'login' | 'profile' | 'register' | 'options' | 'other';
+  isLoggedIn: boolean;
+  userId?: string;
+  links: AccountNavLink[];
+  title: string;
+  bodyHtml?: string;
+}
+
+export type PageData = PostData | ListData | AccountData;
 
 /** Build a post view URL from a numeric id and tag context (no DOM link parsing). */
 export function buildPostViewUrl(id: number | string, searchTags: string): string {
@@ -50,6 +70,14 @@ export function buildPostViewUrl(id: number | string, searchTags: string): strin
 }
 
 export function parseRule34Page(doc: Document, searchParams?: URLSearchParams): PageData | null {
+  const sp = searchParams ?? new URL(window.location.href).searchParams;
+  const pageParam = sp.get('page') ?? '';
+
+  if (pageParam === 'account') {
+    const account = parseAccountPage(doc, sp);
+    if (account) return account;
+  }
+
   const imageEl = doc.querySelector('#image') as HTMLImageElement | null;
   const videoEl =
     (doc.querySelector('#gelcomVideoPlayer video') as HTMLVideoElement | null) ||
@@ -171,43 +199,184 @@ export function parseRule34Page(doc: Document, searchParams?: URLSearchParams): 
   if (thumbContainer) {
     const items: ListItem[] = [];
     thumbContainer.querySelectorAll('span.thumb').forEach((thumb) => {
-      const rawId = thumb.id ?? '';
-      const id = rawId.replace(/^s/, '');
-      if (!id) return;
-      const img = thumb.querySelector('img');
-      if (!img) return;
-      const thumbUrl = img.src;
-      const rawTags = img.title || img.alt || '';
-      const tags = rawTags.split(/\s+/).filter(Boolean);
-      const mediaType = tags.includes('video') ? 'video' : 'image';
-      items.push({ id, thumbUrl, tags, mediaType });
+      const item = parseListThumb(thumb);
+      if (item) items.push(item);
     });
 
-    const sp = searchParams ?? new URL(window.location.href).searchParams;
+    const isFavorites = pageParam === 'favorites' && sp.get('s') === 'view';
+    const favoritesUserId = isFavorites ? sp.get('id') ?? undefined : undefined;
     const searchTags = sp.has('tags') ? sp.get('tags') ?? 'all' : 'all';
-
-    const pagination: PaginationLink[] = [];
-    doc.querySelectorAll('.pagination a, .pagination b, .pagination span, .pagination strong').forEach(el => {
-       const label = el.textContent?.trim() || '';
-       if (!label) return;
-       
-       pagination.push({
-          label,
-          url: el.tagName === 'A' ? (el as HTMLAnchorElement).getAttribute('href') || '' : '',
-          isCurrent: el.tagName === 'B' || el.tagName === 'SPAN' && (el.classList.contains('current') || el.classList.contains('active'))
-       });
-    });
+    const pagination = parsePagination(doc);
 
     return {
       type: 'list',
       items,
       searchTags,
       title: doc.title,
-      pagination
+      pagination,
+      listKind: isFavorites ? 'favorites' : 'search',
+      favoritesUserId,
+      listTitle: isFavorites ? 'My Favorites' : undefined,
     };
   }
 
   return null;
+}
+
+function parseListThumb(thumb: Element): ListItem | null {
+  const link =
+    (thumb.querySelector('a[id^="p"], a[id^="s"]') as HTMLAnchorElement | null) ??
+    (thumb.querySelector('a') as HTMLAnchorElement | null);
+  if (!link) return null;
+
+  let id = link.id?.replace(/^[sp]/, '') ?? '';
+  if (!id) {
+    const href = link.getAttribute('href') ?? '';
+    id = href.match(/[?&]id=(\d+)/)?.[1] ?? '';
+  }
+  if (!id) return null;
+
+  const img = thumb.querySelector('img');
+  if (!img) return null;
+
+  const thumbUrl = img.src;
+  const rawTags = img.title || img.alt || '';
+  const tags = rawTags.split(/\s+/).filter(Boolean);
+  const mediaType = tags.includes('video') ? 'video' : 'image';
+
+  const outer = thumb.parentElement;
+  const removeAnchor = outer?.querySelector(
+    'a[href*="s=delete"], a[onclick*="s=delete"]'
+  ) as HTMLAnchorElement | null;
+  let removeFavoriteUrl: string | undefined;
+  if (removeAnchor) {
+    const onclick = removeAnchor.getAttribute('onclick') ?? '';
+    const hrefMatch =
+      removeAnchor.getAttribute('href')?.match(/index\.php[^'"]+/) ??
+      onclick.match(/index\.php[^'"]+/);
+    if (hrefMatch) {
+      removeFavoriteUrl = toAbsoluteRule34Url(hrefMatch[0]) ?? undefined;
+    } else {
+      removeFavoriteUrl = `${RULE34_ORIGIN}/index.php?page=favorites&s=delete&id=${id}&return_pid=0`;
+    }
+  }
+
+  return { id, thumbUrl, tags, mediaType, removeFavoriteUrl };
+}
+
+function parsePagination(doc: Document): PaginationLink[] {
+  const pagination: PaginationLink[] = [];
+  const roots = doc.querySelectorAll('.pagination, #paginator');
+  roots.forEach((root) => {
+    root.querySelectorAll('a, b, span, strong').forEach((el) => {
+      const label = el.textContent?.trim() || '';
+      if (!label) return;
+      pagination.push({
+        label,
+        url: el.tagName === 'A' ? (el as HTMLAnchorElement).getAttribute('href') || '' : '',
+        isCurrent:
+          el.tagName === 'B' ||
+          (el.tagName === 'SPAN' &&
+            (el.classList.contains('current') || el.classList.contains('active'))),
+      });
+    });
+  });
+  return pagination;
+}
+
+function parseAccountPage(doc: Document, sp: URLSearchParams): AccountData | null {
+  const variantRaw = sp.get('s') ?? 'home';
+  const variant = (
+    ['home', 'login', 'profile', 'register', 'reg', 'options'].includes(variantRaw)
+      ? variantRaw === 'reg'
+        ? 'register'
+        : variantRaw
+      : 'other'
+  ) as AccountData['variant'];
+
+  const userLogin = doc.querySelector('#user-login');
+  if (userLogin || variant === 'login') {
+    return {
+      type: 'account',
+      variant: 'login',
+      isLoggedIn: false,
+      links: [
+        {
+          label: 'Sign Up',
+          href: `${RULE34_ORIGIN}/index.php?page=account&s=reg`,
+          description: 'Create a new account (no email required).',
+        },
+      ],
+      title: doc.title,
+    };
+  }
+
+  const userIndex = doc.querySelector('#user-index');
+  if (userIndex) {
+    const heading = userIndex.querySelector('h2')?.textContent?.trim() ?? '';
+    const isLoggedIn = !/not logged in/i.test(heading);
+    const links = extractAccountLinksFromDom(userIndex);
+
+    let userId: string | undefined;
+    const favoritesLink = links.find((l) => l.href.includes('page=favorites'));
+    if (favoritesLink) {
+      try {
+        userId = new URL(favoritesLink.href, RULE34_ORIGIN).searchParams.get('id') ?? undefined;
+      } catch {
+        userId = undefined;
+      }
+    }
+
+    return {
+      type: 'account',
+      variant: 'home',
+      isLoggedIn,
+      userId,
+      links,
+      title: doc.title,
+    };
+  }
+
+  const content = doc.querySelector('#content');
+  if (content && pageParamIsAccount(sp)) {
+    return {
+      type: 'account',
+      variant,
+      isLoggedIn: !doc.body.textContent?.includes('You are not logged in'),
+      links: extractAccountLinksFromDom(content),
+      title: doc.title,
+      bodyHtml: content.innerHTML,
+    };
+  }
+
+  return null;
+}
+
+function pageParamIsAccount(sp: URLSearchParams): boolean {
+  return sp.get('page') === 'account';
+}
+
+function extractAccountLinksFromDom(root: ParentNode): AccountNavLink[] {
+  const links: AccountNavLink[] = [];
+  root.querySelectorAll('h4 a, h1 a').forEach((anchor) => {
+    const el = anchor as HTMLAnchorElement;
+    const hrefRaw = el.getAttribute('href') ?? '';
+    if (!hrefRaw || hrefRaw === '#') return;
+    const href = toAbsoluteRule34Url(hrefRaw) ?? '';
+    if (!href) return;
+
+    const label = el.textContent?.replace(/^[»\s]+/, '').trim() ?? '';
+    if (!label) return;
+
+    const inHeading = el.closest('h4, h1');
+    const paragraph = inHeading?.nextElementSibling;
+    const description =
+      paragraph?.tagName === 'P' ? paragraph.textContent?.trim() : undefined;
+
+    if (links.some((l) => l.href === href)) return;
+    links.push({ label, href, description });
+  });
+  return links;
 }
 
 export function toAbsoluteRule34Url(href: string): string | null {

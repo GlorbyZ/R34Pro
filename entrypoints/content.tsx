@@ -8,6 +8,17 @@ import {
   toAbsoluteRule34Url,
   type PageData,
 } from '../lib/parseRule34Page';
+import {
+  accountHomeUrl,
+  accountLoginUrl,
+  accountRegisterUrl,
+  addFavorite,
+  fetchAccountSession,
+  favoritesViewUrl,
+  loginRule34,
+  removeFavorite,
+  type AccountSession,
+} from '../lib/rule34Profile';
 
 
 
@@ -129,8 +140,35 @@ const App = ({ initialData }: { initialData: PageData }) => {
   const showSearchLanding =
     isAndroidApp &&
     initialData.type === 'list' &&
+    initialData.listKind === 'search' &&
     initialData.searchTags === 'all' &&
     currentParams.get('r34_browse') !== '1';
+  const [accountSession, setAccountSession] = useState<AccountSession>(() => {
+    if (initialData.type === 'account') {
+      return {
+        isLoggedIn: initialData.isLoggedIn,
+        userId: initialData.userId,
+        favoritesUrl: initialData.userId ? favoritesViewUrl(initialData.userId) : undefined,
+        profileUrl: initialData.links.find((l) => l.href.includes('profile'))?.href,
+        mailUrl: initialData.links.find((l) => l.href.includes('gmail'))?.href,
+        logoutUrl: initialData.links.find((l) => /code=01|logout/i.test(l.href))?.href,
+      };
+    }
+    if (initialData.type === 'list' && initialData.listKind === 'favorites' && initialData.favoritesUserId) {
+      return {
+        isLoggedIn: true,
+        userId: initialData.favoritesUserId,
+        favoritesUrl: favoritesViewUrl(initialData.favoritesUserId),
+      };
+    }
+    return { isLoggedIn: false };
+  });
+  const [profileNotice, setProfileNotice] = useState<string | null>(null);
+  const [loginUser, setLoginUser] = useState('');
+  const [loginPass, setLoginPass] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [lightboxUiVisible, setLightboxUiVisible] = useState(
     () => new URL(window.location.href).searchParams.get('r34_ui') !== '0'
   );
@@ -182,6 +220,76 @@ const App = ({ initialData }: { initialData: PageData }) => {
   useEffect(() => {
     (window as any).__r34proDismissLoadingShell?.();
   }, []);
+
+  const refreshAccountSession = useCallback(async () => {
+    const session = await fetchAccountSession();
+    setAccountSession(session);
+    chrome.storage.local.set({ r34proSession: session }).catch(() => {});
+    return session;
+  }, []);
+
+  useEffect(() => {
+    if (initialData.type === 'account') return;
+    refreshAccountSession();
+    chrome.storage.local.get('r34proSession').then((stored) => {
+      if (stored.r34proSession?.isLoggedIn) {
+        setAccountSession(stored.r34proSession as AccountSession);
+      }
+    });
+  }, [initialData.type, refreshAccountSession]);
+
+  const showProfileNotice = useCallback((message: string) => {
+    setProfileNotice(message);
+    window.setTimeout(() => setProfileNotice(null), 3200);
+  }, []);
+
+  const handleLoginSubmit = useCallback(async (event: React.FormEvent) => {
+    event.preventDefault();
+    setLoginLoading(true);
+    setLoginError(null);
+    const result = await loginRule34(loginUser, loginPass);
+    setLoginLoading(false);
+    if (!result.ok) {
+      setLoginError(result.error ?? 'Login failed.');
+      return;
+    }
+    const session = await refreshAccountSession();
+    showProfileNotice(session.isLoggedIn ? 'Logged in successfully.' : 'Login submitted.');
+    if (session.isLoggedIn) {
+      window.location.href = accountHomeUrl();
+    }
+  }, [loginUser, loginPass, refreshAccountSession, showProfileNotice]);
+
+  const handleToggleFavorite = useCallback(async (postId: string) => {
+    if (!accountSession.isLoggedIn) {
+      window.location.href = accountLoginUrl();
+      return;
+    }
+    setFavoriteBusy(true);
+    const ok = await addFavorite(postId);
+    setFavoriteBusy(false);
+    if (ok) {
+      showProfileNotice('Added to favorites.');
+      (window as any).addFav?.(postId);
+    } else {
+      showProfileNotice('Could not add favorite. Try logging in again.');
+    }
+  }, [accountSession.isLoggedIn, showProfileNotice]);
+
+  const handleRemoveFavorite = useCallback(async (postId: string) => {
+    setFavoriteBusy(true);
+    const ok = await removeFavorite(postId);
+    setFavoriteBusy(false);
+    if (!ok) {
+      showProfileNotice('Could not remove favorite.');
+      return;
+    }
+    setData((prev) => {
+      if (prev.type !== 'list' || prev.listKind !== 'favorites') return prev;
+      return { ...prev, items: prev.items.filter((item) => item.id !== postId) };
+    });
+    showProfileNotice('Removed from favorites.');
+  }, [showProfileNotice]);
 
   const startLightboxUiAutoHide = useCallback(() => {
     if (!isAndroidApp) return;
@@ -326,8 +434,10 @@ const App = ({ initialData }: { initialData: PageData }) => {
   }, []);
 
   useEffect(() => {
-    setSearchValue(data.searchTags === 'all' ? '' : data.searchTags);
-  }, [data.searchTags]);
+    if (data.type === 'list') {
+      setSearchValue(data.searchTags === 'all' ? '' : data.searchTags);
+    }
+  }, [data.type, data.type === 'list' ? data.searchTags : null]);
 
   const fetchSuggestions = async (val: string) => {
     if (!val || val.length < 2) {
@@ -1016,6 +1126,73 @@ const App = ({ initialData }: { initialData: PageData }) => {
               </button>
             </form>
           </div>
+
+          <div className="flex flex-col gap-4 py-2 relative z-10 border-t border-white/5 pt-6">
+            <div className="text-[10px] font-black text-gold px-1 uppercase tracking-[0.2em] opacity-80">Profile</div>
+            {accountSession.isLoggedIn ? (
+              <div className="flex flex-col gap-3">
+                <div className="rounded-2xl border border-theme-primary/20 bg-theme-primary/5 px-4 py-3">
+                  <div className="text-[10px] uppercase tracking-widest text-theme-primary font-black">Signed in</div>
+                  <div className="text-sm font-bold text-white mt-1">
+                    {accountSession.userId ? `User #${accountSession.userId}` : 'Rule34 account'}
+                  </div>
+                </div>
+                {accountSession.favoritesUrl && (
+                  <button
+                    type="button"
+                    onClick={() => { window.location.href = accountSession.favoritesUrl!; }}
+                    className="w-full bg-zinc-900 hover:bg-zinc-800 border border-white/10 p-4 rounded-2xl text-left transition-all active:scale-95"
+                  >
+                    <div className="text-xs font-black uppercase tracking-widest text-white">My Favorites</div>
+                    <div className="text-[10px] text-zinc-500 mt-1">Saved posts gallery</div>
+                  </button>
+                )}
+                {accountSession.profileUrl && (
+                  <button
+                    type="button"
+                    onClick={() => { window.location.href = accountSession.profileUrl!; }}
+                    className="w-full bg-zinc-900/60 hover:bg-zinc-800 border border-white/5 p-3 rounded-xl text-left text-[11px] font-bold text-zinc-300 transition-all"
+                  >
+                    My Profile
+                  </button>
+                )}
+                {accountSession.mailUrl && (
+                  <button
+                    type="button"
+                    onClick={() => { window.location.href = accountSession.mailUrl!; }}
+                    className="w-full bg-zinc-900/60 hover:bg-zinc-800 border border-white/5 p-3 rounded-xl text-left text-[11px] font-bold text-zinc-300 transition-all"
+                  >
+                    My Mail
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { window.location.href = accountSession.logoutUrl ?? `${RULE34_ORIGIN}/index.php?page=account&s=login&code=01`; }}
+                  className="w-full bg-zinc-950 hover:bg-red-950/40 border border-white/5 p-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-red-300 transition-all"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <p className="text-[10px] text-zinc-500 px-1">Sign in to save favorites and sync your Rule34 account.</p>
+                <button
+                  type="button"
+                  onClick={() => { window.location.href = accountLoginUrl(); }}
+                  className="btn-theme w-full py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border border-white/10"
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { window.location.href = accountRegisterUrl(); }}
+                  className="w-full py-3 rounded-xl bg-zinc-900 border border-white/10 text-[10px] font-black uppercase tracking-widest text-zinc-300 hover:text-white transition-all"
+                >
+                  Create Account
+                </button>
+              </div>
+            )}
+          </div>
           
           {data.type === 'post' && (
             <div className="flex flex-col gap-4 p-5 rounded-2xl bg-white/[0.03] border border-white/5 shadow-inner">
@@ -1136,8 +1313,9 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
                    <div className="flex gap-3">
                      <button 
-                      onClick={() => { (window as any).addFav?.(data.id); (window as any).notice?.('Added to favorites'); }}
-                      className="flex-1 bg-zinc-900 hover:bg-zinc-800 border border-white/5 p-4 rounded-xl flex items-center justify-center gap-3 transition-all hover:scale-[1.05] active:scale-95 cursor-pointer group">
+                      onClick={() => handleToggleFavorite(data.id)}
+                      disabled={favoriteBusy}
+                      className="flex-1 bg-zinc-900 hover:bg-zinc-800 border border-white/5 p-4 rounded-xl flex items-center justify-center gap-3 transition-all hover:scale-[1.05] active:scale-95 cursor-pointer group disabled:opacity-50">
                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-zinc-500 group-hover:text-theme-primary transition-colors"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path></svg>
                       <span className="text-[10px] font-black text-zinc-400 group-hover:text-white uppercase tracking-widest">Favorite</span>
                      </button>
@@ -1247,13 +1425,31 @@ const App = ({ initialData }: { initialData: PageData }) => {
             <div className="text-[10px] text-zinc-500 truncate">
               {showSearchLanding
                 ? 'Search'
+                : data.type === 'account'
+                  ? (data.isLoggedIn ? 'Account' : 'Login')
+                  : data.type === 'list' && data.listKind === 'favorites'
+                    ? 'Favorites'
                 : data.type === 'post'
                   ? `Post ${data.id}`
-                  : data.searchTags === 'all'
-                    ? 'All posts'
-                    : data.searchTags.replace(/_/g, ' ')}
+                  : data.type === 'list'
+                    ? (data.searchTags === 'all' ? 'All posts' : data.searchTags.replace(/_/g, ' '))
+                    : 'R34 Pro'}
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (accountSession.isLoggedIn && accountSession.favoritesUrl) {
+                window.location.href = accountSession.favoritesUrl;
+              } else {
+                window.location.href = accountHomeUrl();
+              }
+            }}
+            className="mobile-touch-btn w-11 h-11 rounded-xl bg-zinc-900 border border-white/10 text-white flex items-center justify-center active:scale-95 transition-all"
+            title={accountSession.isLoggedIn ? 'My favorites' : 'Account'}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          </button>
           {data.type === 'post' && (
             <>
               <button
@@ -1331,7 +1527,95 @@ const App = ({ initialData }: { initialData: PageData }) => {
            </div>
         )}
 
-        {data.type === 'post' ? (
+        {data.type === 'account' ? (
+          <div className="mobile-search-landing w-full flex-1 min-h-0 flex flex-col items-center justify-start p-6 gap-6 overflow-y-auto max-w-lg mx-auto">
+            <div className="text-center space-y-2 w-full">
+              <h1 className="text-2xl font-black uppercase tracking-[0.15em] text-white">
+                {data.variant === 'login' ? 'Login' : data.isLoggedIn ? 'My Account' : 'Account'}
+              </h1>
+              <p className="text-sm text-zinc-400">
+                {data.isLoggedIn
+                  ? 'Manage your Rule34 profile, favorites, and mail.'
+                  : 'Sign in to save favorites and access account features.'}
+              </p>
+            </div>
+
+            {data.variant === 'login' ? (
+              <form onSubmit={handleLoginSubmit} className="w-full flex flex-col gap-4">
+                <input
+                  type="text"
+                  name="user"
+                  value={loginUser}
+                  onChange={(e) => setLoginUser(e.target.value)}
+                  placeholder="Username"
+                  autoComplete="username"
+                  className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-5 py-4 text-white"
+                />
+                <input
+                  type="password"
+                  name="pass"
+                  value={loginPass}
+                  onChange={(e) => setLoginPass(e.target.value)}
+                  placeholder="Password"
+                  autoComplete="current-password"
+                  className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-5 py-4 text-white"
+                />
+                {loginError && (
+                  <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                    {loginError}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={loginLoading || !loginUser || !loginPass}
+                  className="btn-theme w-full py-4 rounded-2xl font-black uppercase tracking-widest disabled:opacity-50"
+                >
+                  {loginLoading ? 'Logging in…' : 'Log in'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { window.location.href = accountRegisterUrl(); }}
+                  className="w-full py-3 rounded-2xl bg-zinc-900 border border-white/10 text-zinc-300 text-sm font-bold"
+                >
+                  Create account
+                </button>
+              </form>
+            ) : (
+              <div className="w-full flex flex-col gap-3">
+                {data.links.map((link) => (
+                  <button
+                    key={link.href}
+                    type="button"
+                    onClick={() => { window.location.href = link.href; }}
+                    className="w-full text-left bg-zinc-900/80 hover:bg-zinc-800 border border-white/10 rounded-2xl px-5 py-4 transition-all active:scale-[0.99]"
+                  >
+                    <div className="text-sm font-black text-white">{link.label}</div>
+                    {link.description && (
+                      <div className="text-[11px] text-zinc-500 mt-1">{link.description}</div>
+                    )}
+                  </button>
+                ))}
+                {!data.isLoggedIn && (
+                  <button
+                    type="button"
+                    onClick={() => { window.location.href = accountLoginUrl(); }}
+                    className="btn-theme w-full py-4 rounded-2xl font-black uppercase tracking-widest mt-2"
+                  >
+                    Login
+                  </button>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => { window.location.href = `${RULE34_ORIGIN}/index.php?page=post&s=list&tags=all&r34_browse=1`; }}
+              className="text-xs font-bold uppercase tracking-widest text-zinc-500 hover:text-theme-primary transition-colors"
+            >
+              Back to browse
+            </button>
+          </div>
+        ) : data.type === 'post' ? (
           <>
             {/* Navigation Overlays (Transparent areas that navigate directly) */}
             <div
@@ -1470,6 +1754,21 @@ const App = ({ initialData }: { initialData: PageData }) => {
           </div>
         ) : (
           <div className="w-full h-full overflow-y-auto scrollbar-hide mobile-grid">
+            {data.listKind === 'favorites' && (
+              <div className="max-w-[1800px] mx-auto w-full px-4 pt-4 pb-2 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-black text-white uppercase tracking-widest">My Favorites</h2>
+                  <p className="text-xs text-zinc-500 mt-1">{data.items.length} saved posts on this page</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { window.location.href = accountHomeUrl(); }}
+                  className="text-[10px] font-black uppercase tracking-widest text-theme-primary"
+                >
+                  Account
+                </button>
+              </div>
+            )}
              <div 
                className="grid gap-6 p-4 max-w-[1800px] mx-auto w-full overflow-y-auto"
                style={{ 
@@ -1493,6 +1792,19 @@ const App = ({ initialData }: { initialData: PageData }) => {
                        <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md p-1.5 rounded-lg border border-white/20">
                           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                        </div>
+                     )}
+                     {data.listKind === 'favorites' && (
+                       <button
+                         type="button"
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           handleRemoveFavorite(item.id);
+                         }}
+                         disabled={favoriteBusy}
+                         className="absolute top-2 left-2 z-10 bg-black/70 hover:bg-red-600/80 border border-white/10 text-white text-[10px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-lg disabled:opacity-50"
+                       >
+                         Remove
+                       </button>
                      )}
                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-4 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
                         <div className="text-[10px] text-white font-bold tracking-tight mb-1 truncate">ID: {item.id}</div>
@@ -1729,6 +2041,12 @@ const App = ({ initialData }: { initialData: PageData }) => {
                </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {profileNotice && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100000010] bg-zinc-950/95 border border-theme-primary/30 text-white text-sm font-bold px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-xl">
+          {profileNotice}
         </div>
       )}
     </div>
