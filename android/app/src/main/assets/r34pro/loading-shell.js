@@ -1,6 +1,5 @@
 (function () {
   var LOGO_URL = 'https://appassets.androidplatform.net/assets/extension/logo.webp';
-  var autoDismissTimer = null;
 
   function pauseAllPageMedia() {
     try {
@@ -11,7 +10,7 @@
           el.autoplay = false;
           el.removeAttribute('autoplay');
         } catch (error) {
-          /* ignore */
+          /* ignore per-element failures */
         }
       });
     } catch (error) {
@@ -24,31 +23,52 @@
     var style = document.createElement('style');
     style.id = 'r34pro-loading-style';
     style.textContent = [
-      'html.r34pro-loading #r34pro-loading-shell {',
-      '  display: flex !important;',
+      'html.r34pro-loading, html.r34pro-loading body {',
+      '  background: #000 !important;',
+      '  overflow: hidden !important;',
+      '}',
+      'html.r34pro-loading body > *:not(#r34pro-loading-shell) {',
+      '  visibility: hidden !important;',
+      '}',
+      'html.r34pro-loading video,',
+      'html.r34pro-loading audio {',
+      '  visibility: hidden !important;',
+      '  pointer-events: none !important;',
       '}',
       '#r34pro-loading-shell {',
       '  position: fixed;',
-      '  top: env(safe-area-inset-top, 0px);',
-      '  left: 0;',
-      '  right: 0;',
-      '  height: 3px;',
+      '  inset: 0;',
       '  z-index: 2147483646;',
-      '  display: none;',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  gap: 1.25rem;',
+      '  background: #000;',
       '  pointer-events: none;',
-      '  overflow: hidden;',
-      '  background: rgba(255,255,255,0.06);',
       '}',
-      '#r34pro-loading-shell .r34pro-loading-bar {',
-      '  width: 35%;',
-      '  height: 100%;',
-      '  background: linear-gradient(90deg, #996515, #d4af37, #f9d71c);',
-      '  animation: r34pro-loading-slide 0.9s ease-in-out infinite;',
+      '#r34pro-loading-shell img {',
+      '  width: 6.5rem;',
+      '  height: 6.5rem;',
+      '  border-radius: 1.5rem;',
+      '  object-fit: contain;',
+      '  box-shadow: 0 0 40px rgba(212, 175, 55, 0.35);',
       '}',
-      '@keyframes r34pro-loading-slide {',
-      '  0% { transform: translateX(-120%); }',
-      '  100% { transform: translateX(320%); }',
+      '#r34pro-loading-shell .r34pro-loading-title {',
+      '  color: #d4af37;',
+      '  font: 700 0.85rem/1.2 Inter, system-ui, sans-serif;',
+      '  letter-spacing: 0.35em;',
+      '  text-transform: uppercase;',
       '}',
+      '#r34pro-loading-shell .r34pro-loading-spinner {',
+      '  width: 2rem;',
+      '  height: 2rem;',
+      '  border: 3px solid rgba(255,255,255,0.08);',
+      '  border-top-color: #d4af37;',
+      '  border-radius: 999px;',
+      '  animation: r34pro-spin 0.9s linear infinite;',
+      '}',
+      '@keyframes r34pro-spin { to { transform: rotate(360deg); } }',
     ].join('\n');
     (document.head || document.documentElement).appendChild(style);
   }
@@ -59,7 +79,10 @@
 
     shell = document.createElement('div');
     shell.id = 'r34pro-loading-shell';
-    shell.innerHTML = '<div class="r34pro-loading-bar"></div>';
+    shell.innerHTML =
+      '<img src="' + LOGO_URL + '" alt="R34 Pro" />' +
+      '<div class="r34pro-loading-title">R34 Pro</div>' +
+      '<div class="r34pro-loading-spinner"></div>';
 
     var mount = function () {
       if (!document.body) return false;
@@ -76,27 +99,31 @@
 
   window.__r34proPauseAllMedia = pauseAllPageMedia;
 
+  var loadingMediaGuard = null;
+
   window.__r34proShowLoadingShell = function () {
+    pauseAllPageMedia();
     ensureStyles();
-    ensureShell();
     document.documentElement.classList.add('r34pro-loading');
-    var shell = document.getElementById('r34pro-loading-shell');
-    if (shell) shell.style.display = 'block';
-    if (autoDismissTimer) clearTimeout(autoDismissTimer);
-    autoDismissTimer = setTimeout(function () {
-      window.__r34proDismissLoadingShell && window.__r34proDismissLoadingShell();
-    }, 1200);
+    var shell = ensureShell();
+    if (shell) shell.style.display = 'flex';
+    pauseAllPageMedia();
+    if (loadingMediaGuard) clearInterval(loadingMediaGuard);
+    loadingMediaGuard = setInterval(pauseAllPageMedia, 250);
   };
 
   window.__r34proDismissLoadingShell = function () {
     document.documentElement.classList.remove('r34pro-loading');
     var shell = document.getElementById('r34pro-loading-shell');
     if (shell) shell.style.display = 'none';
-    if (autoDismissTimer) {
-      clearTimeout(autoDismissTimer);
-      autoDismissTimer = null;
+    if (loadingMediaGuard) {
+      clearInterval(loadingMediaGuard);
+      loadingMediaGuard = null;
     }
   };
 
   window.addEventListener('pagehide', pauseAllPageMedia);
+  window.addEventListener('beforeunload', pauseAllPageMedia);
+
+  window.__r34proShowLoadingShell();
 })();

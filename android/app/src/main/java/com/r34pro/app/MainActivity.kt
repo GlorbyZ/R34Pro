@@ -27,9 +27,35 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pinOverlay: View
     private lateinit var pinLock: PinLockController
     private var extensionInjectedForUrl: String? = null
-    private var injectAttempts = 0
     private var pendingShowPinOnResume = false
     private var immersiveRequested = false
+
+    private val pauseMediaJs = """
+        (function() {
+          if (window.__r34proPauseAllMedia) {
+            window.__r34proPauseAllMedia();
+            return;
+          }
+          document.querySelectorAll('video,audio').forEach(function(el) {
+            try {
+              el.pause();
+              el.muted = true;
+              el.autoplay = false;
+              el.removeAttribute('autoplay');
+            } catch (e) {}
+          });
+        })();
+    """.trimIndent()
+
+    private val showLoadingShellJs = """
+        (function() {
+          if (window.__r34proShowLoadingShell) {
+            window.__r34proShowLoadingShell();
+            return;
+          }
+          document.documentElement.classList.add('r34pro-loading');
+        })();
+    """.trimIndent()
 
     private val assetLoader: WebViewAssetLoader by lazy {
         WebViewAssetLoader.Builder()
@@ -67,7 +93,6 @@ class MainActivity : AppCompatActivity() {
             allowFileAccess = true
             allowContentAccess = true
             textZoom = 100
-            cacheMode = WebSettings.LOAD_DEFAULT
         }
 
         webView.addJavascriptInterface(R34ProBridge(this), "R34ProAndroid")
@@ -90,11 +115,19 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                return !isRule34Url(request.url.toString())
+                val url = request.url.toString()
+                if (isRule34Url(url)) {
+                    pausePageMedia(view)
+                    showLoadingShell(view)
+                    return false
+                }
+                return true
             }
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 extensionInjectedForUrl = null
+                pausePageMedia(view)
+                showLoadingShell(view)
                 injectEarlyBootstrap(view)
                 super.onPageStarted(view, url, favicon)
             }
@@ -103,7 +136,7 @@ class MainActivity : AppCompatActivity() {
                 super.onPageFinished(view, url)
                 injectEarlyBootstrap(view)
                 if (isRule34Url(url)) {
-                    view.postDelayed({ injectExtension(view) }, 150)
+                    injectExtension(view)
                 } else {
                     dismissLoadingShell(view)
                 }
@@ -146,6 +179,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         webView.onPause()
+        pausePageMedia(webView)
         super.onPause()
         sessionUnlocked = false
         pendingShowPinOnResume = true
@@ -195,80 +229,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun injectEarlyBootstrap(view: WebView) {
-        injectScript(view, "r34pro/viewport-setup.js")
         injectScript(view, "r34pro/loading-shell.js")
+        injectScript(view, "r34pro/viewport-setup.js")
     }
 
     private fun injectExtension(view: WebView) {
         val currentUrl = view.url ?: return
         if (extensionInjectedForUrl == currentUrl) {
-            pollForUiMount(view, 0)
+            verifyInjection(view)
             return
         }
         extensionInjectedForUrl = currentUrl
-        injectAttempts = 0
 
         injectScript(view, "r34pro/chrome-polyfill.js") {
             injectScript(view, "extension/background.js") {
                 injectAssetCss(view, "extension/content-scripts/content.css") {
-                    injectContentBundle(view) {
-                        pollForUiMount(view, 0)
+                    injectScript(view, "extension/content-scripts/content.js") {
+                        verifyInjection(view)
                     }
                 }
             }
-        }
-    }
-
-    private fun injectContentBundle(view: WebView, onDone: () -> Unit) {
-        injectScript(view, "r34pro/load-content.js") {
-            view.postDelayed({
-                view.evaluateJavascript(
-                    "(function(){ return !!window.__R34PRO_CONTENT_SCRIPT_TAG_FAILED; })();"
-                ) { failed ->
-                    if (failed == "true") {
-                        Log.w(TAG, "Script tag load failed, falling back to direct injection")
-                        injectLargeScriptEval(view, "extension/content-scripts/content.js", onDone)
-                    } else {
-                        onDone()
-                    }
-                }
-            }, 400)
-        }
-    }
-
-    private fun injectLargeScriptEval(
-        view: WebView,
-        assetPath: String,
-        onDone: (() -> Unit)? = null
-    ) {
-        try {
-            val source = readAsset(assetPath)
-            if (source.length <= 120_000) {
-                injectScript(view, assetPath, onDone)
-                return
-            }
-
-            val chunks = source.chunked(28_000)
-            fun injectChunk(index: Int) {
-                if (index >= chunks.size) {
-                    onDone?.invoke()
-                    return
-                }
-                val chunk = JSONObject.quote(chunks[index])
-                val js = when (index) {
-                    0 -> "window.__r34pro_eval_buf = $chunk;"
-                    chunks.lastIndex -> """
-                        window.__r34pro_eval_buf += $chunk;
-                        try { (0, eval)(window.__r34pro_eval_buf); } finally { delete window.__r34pro_eval_buf; }
-                    """.trimIndent()
-                    else -> "window.__r34pro_eval_buf += $chunk;"
-                }
-                view.evaluateJavascript(js) { injectChunk(index + 1) }
-            }
-            injectChunk(0)
-        } catch (error: Exception) {
-            Log.e(TAG, "Failed chunked script injection: $assetPath", error)
-            onDone?.invoke()
         }
     }
 
@@ -303,7 +283,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun pollForUiMount(view: WebView, attempt: Int) {
+    private fun verifyInjection(view: WebView) {
         view.evaluateJavascript(
             """
             (function() {
@@ -312,38 +292,37 @@ class MainActivity : AppCompatActivity() {
               if (hasRoot || hasVoid) {
                 window.__r34proDismissLoadingShell && window.__r34proDismissLoadingShell();
               }
-              return JSON.stringify({
-                hasRoot: hasRoot,
-                hasVoid: hasVoid,
-                loading: !!window.__R34PRO_CONTENT_LOADING,
-                loaded: !!window.__R34PRO_CONTENT_LOADED,
-                href: location.href
-              });
+              return JSON.stringify({ hasRoot: hasRoot, hasVoid: hasVoid, href: location.href });
             })();
             """.trimIndent()
         ) { result ->
-            Log.d(TAG, "UI poll ($attempt): $result")
-            if (result != null && result.contains("\"hasRoot\":true")) {
-                injectAttempts = 0
-                dismissLoadingShell(view)
-                return@evaluateJavascript
+            Log.d(TAG, "Injection check: $result")
+            if (result == null || result.contains("\"hasRoot\":false")) {
+                view.postDelayed({ reinjectIfNeeded(view) }, 500)
             }
-
-            if (attempt >= 30) {
-                if (injectAttempts < 3) {
-                    injectAttempts++
-                    Log.w(TAG, "R34 Pro UI missing after polling, reinject attempt $injectAttempts")
-                    extensionInjectedForUrl = null
-                    view.postDelayed({ injectExtension(view) }, 800)
-                } else {
-                    Log.e(TAG, "R34 Pro UI failed to mount after $injectAttempts reinject attempts")
-                    dismissLoadingShell(view)
-                }
-                return@evaluateJavascript
-            }
-
-            view.postDelayed({ pollForUiMount(view, attempt + 1) }, 400)
         }
+    }
+
+    private fun reinjectIfNeeded(view: WebView) {
+        view.evaluateJavascript(
+            "(function(){ return !!document.getElementById('reframer-root'); })();"
+        ) { result ->
+            if (result == "false") {
+                Log.w(TAG, "R34 Pro UI missing, retrying injection")
+                extensionInjectedForUrl = null
+                injectExtension(view)
+            }
+        }
+    }
+
+    private fun pausePageMedia(view: WebView) {
+        view.evaluateJavascript(pauseMediaJs, null)
+    }
+
+    private fun showLoadingShell(view: WebView) {
+        pausePageMedia(view)
+        view.evaluateJavascript(showLoadingShellJs, null)
+        injectScript(view, "r34pro/loading-shell.js")
     }
 
     private fun dismissLoadingShell(view: WebView) {
@@ -365,8 +344,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "R34Pro"
-        private const val HOME_URL =
-            "https://rule34.xxx/index.php?page=post&s=list&tags=all&r34_browse=1"
+        private const val HOME_URL = "https://rule34.xxx/index.php?page=post&s=list&tags=all"
         private const val ASSET_DOMAIN = "appassets.androidplatform.net"
 
         @Volatile
