@@ -245,6 +245,24 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* Lightbox Console & Controls */
+.lightbox-chrome-btn {
+  min-width: 56px;
+  min-height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lightbox-chrome-top {
+  z-index: 100000011;
+}
+
+.lightbox-chrome-bottom.lightbox-ui-hidden {
+  pointer-events: none;
+}
+
 .lightbox-console {
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(20px);
