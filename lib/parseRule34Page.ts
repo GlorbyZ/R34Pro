@@ -212,10 +212,14 @@ export function parseRule34Page(doc: Document, searchParams?: URLSearchParams): 
     };
   }
 
-  const thumbContainer = doc.querySelector('.image-list');
-  if (thumbContainer) {
+  const listRoot = findListRoot(doc);
+  if (listRoot) {
     const items: ListItem[] = [];
-    thumbContainer.querySelectorAll('span.thumb').forEach((thumb) => {
+    const thumbs =
+      listRoot === doc.body
+        ? doc.querySelectorAll('span.thumb')
+        : listRoot.querySelectorAll('span.thumb');
+    thumbs.forEach((thumb) => {
       const item = parseListThumb(thumb);
       if (item) items.push(item);
     });
@@ -235,6 +239,21 @@ export function parseRule34Page(doc: Document, searchParams?: URLSearchParams): 
       favoritesUserId,
       listTitle: isFavorites ? 'My Favorites' : undefined,
     };
+  }
+
+  return null;
+}
+
+function findListRoot(doc: Document): Element | null {
+  const direct =
+    doc.querySelector('.image-list') ??
+    doc.querySelector('#post-list') ??
+    doc.querySelector('#content .image-list');
+  if (direct) return direct;
+
+  const isListPage = doc.querySelector('#post-list, .pagination, #paginator') != null;
+  if (isListPage && doc.querySelectorAll('span.thumb').length > 0) {
+    return doc.body;
   }
 
   return null;

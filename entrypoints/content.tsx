@@ -622,12 +622,15 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
   useEffect(() => {
     if (initialData.type === 'account') return;
-    refreshAccountSession();
     chrome.storage.local.get('r34proSession').then((stored) => {
       if (stored.r34proSession?.isLoggedIn) {
         setAccountSession(stored.r34proSession as AccountSession);
       }
     });
+    const refreshTimer = window.setTimeout(() => {
+      refreshAccountSession();
+    }, 3000);
+    return () => window.clearTimeout(refreshTimer);
   }, [initialData.type, refreshAccountSession]);
 
   const showProfileNotice = useCallback((message: string) => {
