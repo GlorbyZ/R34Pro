@@ -69,7 +69,7 @@
     id: 'r34pro-android',
     lastError: null,
     getURL(path) {
-      return `file:///android_asset/extension/${String(path || '').replace(/^\//, '')}`;
+      return `https://appassets.androidplatform.net/assets/extension/${String(path || '').replace(/^\//, '')}`;
     },
     onMessage: {
       addListener(listener) {
