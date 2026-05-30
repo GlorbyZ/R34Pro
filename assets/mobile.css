@@ -119,12 +119,21 @@ html.r34pro-android .void-navigator-root .lightbox-mobile-controls {
 
 html.r34pro-android .void-navigator-root .lightbox-top-actions {
   z-index: 200;
-  pointer-events: none;
+  pointer-events: auto !important;
+  touch-action: manipulation;
 }
 
-html.r34pro-android .void-navigator-root .lightbox-top-actions > * {
-  pointer-events: auto;
+html.r34pro-android .void-navigator-root .lightbox-top-actions .lightbox-chrome-btn {
+  pointer-events: auto !important;
   touch-action: manipulation;
+}
+
+html.r34pro-android .void-navigator-root .lightbox-media-gesture-layer {
+  top: calc(4.25rem + env(safe-area-inset-top, 0px)) !important;
+  bottom: calc(6rem + env(safe-area-inset-bottom, 0px)) !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: auto !important;
 }
 
 html.r34pro-android .void-navigator-root .lightbox-mobile-controls.lightbox-ui-hidden {
