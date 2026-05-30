@@ -112,9 +112,19 @@ html.r34pro-android .void-navigator-root .lightbox-mobile-controls {
   left: 0.75rem !important;
   right: 0.75rem !important;
   top: auto !important;
-  bottom: calc(6rem + env(safe-area-inset-bottom, 0px)) !important;
+  bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
   width: auto !important;
   transition: opacity 0.3s ease, transform 0.3s ease !important;
+}
+
+html.r34pro-android .void-navigator-root .lightbox-top-actions {
+  z-index: 200;
+  pointer-events: none;
+}
+
+html.r34pro-android .void-navigator-root .lightbox-top-actions > * {
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 html.r34pro-android .void-navigator-root .lightbox-mobile-controls.lightbox-ui-hidden {
@@ -234,7 +244,7 @@ html.r34pro-android .void-navigator-root .mobile-top-bar .text-\[10px\] {
     left: 0.75rem !important;
     right: 0.75rem !important;
     top: auto !important;
-    bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px)) !important;
+    bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
     width: auto !important;
   }
 

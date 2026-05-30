@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, forwardRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../assets/main.css';
 import {
@@ -32,6 +32,117 @@ import {
  * 3. Atomic Parsing: The site is parsed once per load into a PageData object.
  */
 const VIDEO_SLIDESHOW_RATIO = 0.65;
+const MAX_ZOOM_SCALE = 4;
+const MIN_PINCH_DISTANCE = 32;
+
+const stopLightboxChromeEvent = (event: React.SyntheticEvent) => {
+  event.stopPropagation();
+};
+
+const PostVideoPlayer = forwardRef(function PostVideoPlayer(
+  {
+    poster,
+    src,
+    className,
+    style,
+    showControls,
+    muted,
+    onTap,
+  }: {
+    poster?: string;
+    src: string;
+    className?: string;
+    style?: React.CSSProperties;
+    showControls?: boolean;
+    muted?: boolean;
+    onTap?: () => void;
+  },
+  ref: React.Ref<HTMLVideoElement>
+) {
+  const [buffering, setBuffering] = useState(false);
+  const bufferTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearBufferTimer = useCallback(() => {
+    if (bufferTimer.current) {
+      clearTimeout(bufferTimer.current);
+      bufferTimer.current = null;
+    }
+  }, []);
+
+  const markBuffering = useCallback(() => {
+    clearBufferTimer();
+    bufferTimer.current = setTimeout(() => setBuffering(true), 280);
+  }, [clearBufferTimer]);
+
+  const markReady = useCallback(() => {
+    clearBufferTimer();
+    setBuffering(false);
+  }, [clearBufferTimer]);
+
+  useEffect(() => () => clearBufferTimer(), [clearBufferTimer]);
+
+  return (
+    <div className="relative flex items-center justify-center max-w-full max-h-full">
+      <video
+        ref={ref}
+        src={src}
+        poster={poster}
+        controls={showControls}
+        muted={muted}
+        autoPlay
+        loop
+        playsInline
+        preload="auto"
+        onWaiting={markBuffering}
+        onPlaying={markReady}
+        onCanPlay={markReady}
+        onLoadedData={markReady}
+        onClick={(e) => {
+          e.stopPropagation();
+          onTap?.();
+        }}
+        className={className}
+        style={style}
+      />
+      {buffering && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/75 border border-white/10 pointer-events-none backdrop-blur-sm">
+          <div className="w-3 h-3 border-2 border-theme-primary border-t-transparent rounded-full animate-spin" />
+          <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-300">Loading</span>
+        </div>
+      )}
+    </div>
+  );
+});
+
+const LightboxChromeButton = ({
+  onClick,
+  title,
+  className,
+  children,
+  disabled,
+}: {
+  onClick: () => void;
+  title: string;
+  className: string;
+  children: React.ReactNode;
+  disabled?: boolean;
+}) => (
+  <button
+    type="button"
+    title={title}
+    disabled={disabled}
+    onPointerDown={stopLightboxChromeEvent}
+    onTouchStart={stopLightboxChromeEvent}
+    onTouchEnd={stopLightboxChromeEvent}
+    onClick={(event) => {
+      stopLightboxChromeEvent(event);
+      onClick();
+    }}
+    className={className}
+  >
+    {children}
+  </button>
+);
 
 const BoutiqueSelect = ({ value, onChange, options, title }: { 
   value: number, 
@@ -102,7 +213,6 @@ const App = ({ initialData }: { initialData: PageData }) => {
   });
   const [slideTick, setSlideTick] = useState(0);
   const [slideMaxTicks, setSlideMaxTicks] = useState(() => (Number(currentParams.get('r34_si')) || 5) * 10);
-  const [mediaReady, setMediaReady] = useState(true);
   const [rateLimited, setRateLimited] = useState(false);
   
   // Bulk Download State (Persist &r34_bc=X)
@@ -203,7 +313,6 @@ const App = ({ initialData }: { initialData: PageData }) => {
   const toggleAndroidLightboxUiRef = useRef<() => void>(() => {});
   const isAndroidAppRef = useRef(isAndroidApp);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const lightboxVideoRef = useRef<HTMLVideoElement>(null);
   const [videoMuted, setVideoMuted] = useState(true);
 
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -356,8 +465,11 @@ const App = ({ initialData }: { initialData: PageData }) => {
     if (!isAndroidApp || !lightboxOpen) {
       if (lightboxUiTimer.current) clearTimeout(lightboxUiTimer.current);
       if (!lightboxOpen) setLightboxUiVisible(true);
+      (window as any).R34ProAndroid?.setImmersive?.(false);
       return;
     }
+
+    (window as any).R34ProAndroid?.setImmersive?.(true);
 
     const uiHiddenFromNav = new URL(window.location.href).searchParams.get('r34_ui') === '0';
     if (uiHiddenFromNav) {
@@ -370,6 +482,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
     startLightboxUiAutoHide();
     return () => {
       if (lightboxUiTimer.current) clearTimeout(lightboxUiTimer.current);
+      (window as any).R34ProAndroid?.setImmersive?.(false);
     };
   }, [isAndroidApp, lightboxOpen, startLightboxUiAutoHide]);
 
@@ -448,10 +561,42 @@ const App = ({ initialData }: { initialData: PageData }) => {
   useEffect(() => {
     setScale(1);
     setPosition({ x: 0, y: 0 });
-    setVideoMuted(true);
-    setMediaReady(data.type !== 'post' || data.mediaType !== 'video');
     setSlideTick(0);
   }, [postId, lightboxOpen, data.type, data.type === 'post' ? data.mediaType : null]);
+
+  useEffect(() => {
+    setVideoMuted(true);
+  }, [postId]);
+
+  useEffect(() => {
+    if (data.type !== 'post' || data.mediaType !== 'video') return;
+
+    const prefetched: HTMLLinkElement[] = [];
+    const prefetchNeighborVideo = async (postUrl?: string) => {
+      if (!postUrl || postUrl === '#') return;
+      try {
+        const res = await fetch(postUrl, { credentials: 'include' });
+        if (!res.ok) return;
+        const html = await res.text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const parsed = parseRule34Page(doc, new URL(postUrl, RULE34_ORIGIN).searchParams);
+        if (parsed?.type === 'post' && parsed.mediaType === 'video' && parsed.highresUrl) {
+          const link = document.createElement('link');
+          link.rel = 'prefetch';
+          link.as = 'video';
+          link.href = parsed.highresUrl;
+          document.head.appendChild(link);
+          prefetched.push(link);
+        }
+      } catch {
+        /* ignore prefetch failures */
+      }
+    };
+
+    void prefetchNeighborVideo(data.nextUrl);
+    void prefetchNeighborVideo(data.prevUrl);
+    return () => prefetched.forEach((link) => link.remove());
+  }, [data.type, data.type === 'post' ? data.mediaType : null, data.type === 'post' ? data.nextUrl : null, data.type === 'post' ? data.prevUrl : null, postId]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -460,10 +605,10 @@ const App = ({ initialData }: { initialData: PageData }) => {
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.2 : 0.2;
-      const newScale = Math.min(Math.max(1, scale + delta), 10);
+      const newScale = Math.min(Math.max(1, scale + delta), MAX_ZOOM_SCALE);
       
       if (newScale !== scale) {
-        const mediaEl = imageRef.current ?? lightboxVideoRef.current ?? videoRef.current;
+        const mediaEl = imageRef.current ?? videoRef.current;
         const rect = mediaEl?.getBoundingClientRect();
         if (rect) {
           const mouseX = e.clientX - rect.left;
@@ -489,7 +634,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
       return;
     }
 
-    const video = lightboxOpen ? lightboxVideoRef.current : videoRef.current;
+    const video = videoRef.current;
     if (!video) {
       setSlideMaxTicks(slideshowInterval * 10);
       return;
@@ -512,7 +657,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
   useEffect(() => {
     if (!isPlaying || data.type !== 'post' || data.mediaType !== 'video') return;
-    const video = lightboxOpen ? lightboxVideoRef.current : videoRef.current;
+    const video = videoRef.current;
     if (!video) return;
     video.currentTime = 0;
     void video.play().catch(() => {});
@@ -702,14 +847,14 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
     const postMediaType = data.mediaType;
     const container = lightboxOpen
-      ? (postMediaType === 'video' ? containerRef.current : lightboxGestureRef.current)
+      ? (postMediaType === 'video' ? postViewContainerRef.current : lightboxGestureRef.current)
       : postGestureRef.current;
     if (!container) return;
 
     let startX = 0;
     let startY = 0;
-    let initialDistance = 0;
-    let initialScale = 1;
+    let lastPinchDistance = 0;
+    let pinchReady = false;
     let gesture: 'none' | 'pan' | 'pinch' | 'swipe' = 'none';
 
     const getDistance = (touches: TouchList) => {
@@ -724,8 +869,8 @@ const App = ({ initialData }: { initialData: PageData }) => {
       if (event.touches.length === 2) {
         gesture = 'pinch';
         touchGestureRef.current = 'pinch';
-        initialDistance = getDistance(event.touches);
-        initialScale = scaleRef.current;
+        lastPinchDistance = getDistance(event.touches);
+        pinchReady = lastPinchDistance >= MIN_PINCH_DISTANCE;
         if (isAndroidAppRef.current && lightboxOpenRef.current) {
           resetLightboxUiTimerRef.current();
         }
@@ -748,12 +893,24 @@ const App = ({ initialData }: { initialData: PageData }) => {
     };
 
     const onTouchMove = (event: TouchEvent) => {
-      if (gesture === 'pinch' && event.touches.length === 2 && initialDistance) {
+      if (gesture === 'pinch' && event.touches.length === 2) {
         event.preventDefault();
         const distance = getDistance(event.touches);
-        const nextScale = Math.min(Math.max(1, initialScale * (distance / initialDistance)), 8);
+        if (!pinchReady) {
+          if (distance < MIN_PINCH_DISTANCE) return;
+          pinchReady = true;
+          lastPinchDistance = distance;
+          return;
+        }
+        if (lastPinchDistance <= 0) {
+          lastPinchDistance = distance;
+          return;
+        }
+        const factor = Math.max(0.88, Math.min(1.12, distance / lastPinchDistance));
+        const nextScale = Math.min(MAX_ZOOM_SCALE, Math.max(1, scaleRef.current * factor));
         setScale(nextScale);
         if (nextScale <= 1) setPosition({ x: 0, y: 0 });
+        lastPinchDistance = distance;
         return;
       }
 
@@ -976,6 +1133,75 @@ const App = ({ initialData }: { initialData: PageData }) => {
     if (cat === 'metadata') return '!text-white bg-blue-900/40 border-blue-500/30 hover:bg-blue-800/50';
     return '!text-white bg-white/5 border-white/10 hover:bg-white/10 hover:border-theme-primary/30';
   };
+
+  const renderProfilePanel = () => (
+    <div className="flex flex-col gap-4 py-2 relative z-10 border-t border-white/5 pt-6">
+      <div className="text-[10px] font-black text-gold px-1 uppercase tracking-[0.2em] opacity-80">Profile</div>
+      {accountSession.isLoggedIn ? (
+        <div className="flex flex-col gap-3">
+          <div className="rounded-2xl border border-theme-primary/20 bg-theme-primary/5 px-4 py-3">
+            <div className="text-[10px] uppercase tracking-widest text-theme-primary font-black">Signed in</div>
+            <div className="text-sm font-bold text-white mt-1">
+              {accountSession.userId ? `User #${accountSession.userId}` : 'Rule34 account'}
+            </div>
+          </div>
+          {accountSession.favoritesUrl && (
+            <button
+              type="button"
+              onClick={() => { window.location.href = accountSession.favoritesUrl!; }}
+              className="w-full bg-zinc-900 hover:bg-zinc-800 border border-white/10 p-4 rounded-2xl text-left transition-all active:scale-95"
+            >
+              <div className="text-xs font-black uppercase tracking-widest text-white">My Favorites</div>
+              <div className="text-[10px] text-zinc-500 mt-1">Saved posts gallery</div>
+            </button>
+          )}
+          {accountSession.profileUrl && (
+            <button
+              type="button"
+              onClick={() => { window.location.href = accountSession.profileUrl!; }}
+              className="w-full bg-zinc-900/60 hover:bg-zinc-800 border border-white/5 p-3 rounded-xl text-left text-[11px] font-bold text-zinc-300 transition-all"
+            >
+              My Profile
+            </button>
+          )}
+          {accountSession.mailUrl && (
+            <button
+              type="button"
+              onClick={() => { window.location.href = accountSession.mailUrl!; }}
+              className="w-full bg-zinc-900/60 hover:bg-zinc-800 border border-white/5 p-3 rounded-xl text-left text-[11px] font-bold text-zinc-300 transition-all"
+            >
+              My Mail
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => { window.location.href = accountSession.logoutUrl ?? `${RULE34_ORIGIN}/index.php?page=account&s=login&code=01`; }}
+            className="w-full bg-zinc-950 hover:bg-red-950/40 border border-white/5 p-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-red-300 transition-all"
+          >
+            Logout
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <p className="text-[10px] text-zinc-500 px-1">Sign in to save favorites and sync your Rule34 account.</p>
+          <button
+            type="button"
+            onClick={() => { window.location.href = accountLoginUrl(); }}
+            className="btn-theme w-full py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border border-white/10"
+          >
+            Login
+          </button>
+          <button
+            type="button"
+            onClick={() => { window.location.href = accountRegisterUrl(); }}
+            className="w-full py-3 rounded-xl bg-zinc-900 border border-white/10 text-[10px] font-black uppercase tracking-widest text-zinc-300 hover:text-white transition-all"
+          >
+            Create Account
+          </button>
+        </div>
+      )}
+    </div>
+  );
 
 
 
@@ -1222,72 +1448,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
             </form>
           </div>
 
-          <div className="flex flex-col gap-4 py-2 relative z-10 border-t border-white/5 pt-6">
-            <div className="text-[10px] font-black text-gold px-1 uppercase tracking-[0.2em] opacity-80">Profile</div>
-            {accountSession.isLoggedIn ? (
-              <div className="flex flex-col gap-3">
-                <div className="rounded-2xl border border-theme-primary/20 bg-theme-primary/5 px-4 py-3">
-                  <div className="text-[10px] uppercase tracking-widest text-theme-primary font-black">Signed in</div>
-                  <div className="text-sm font-bold text-white mt-1">
-                    {accountSession.userId ? `User #${accountSession.userId}` : 'Rule34 account'}
-                  </div>
-                </div>
-                {accountSession.favoritesUrl && (
-                  <button
-                    type="button"
-                    onClick={() => { window.location.href = accountSession.favoritesUrl!; }}
-                    className="w-full bg-zinc-900 hover:bg-zinc-800 border border-white/10 p-4 rounded-2xl text-left transition-all active:scale-95"
-                  >
-                    <div className="text-xs font-black uppercase tracking-widest text-white">My Favorites</div>
-                    <div className="text-[10px] text-zinc-500 mt-1">Saved posts gallery</div>
-                  </button>
-                )}
-                {accountSession.profileUrl && (
-                  <button
-                    type="button"
-                    onClick={() => { window.location.href = accountSession.profileUrl!; }}
-                    className="w-full bg-zinc-900/60 hover:bg-zinc-800 border border-white/5 p-3 rounded-xl text-left text-[11px] font-bold text-zinc-300 transition-all"
-                  >
-                    My Profile
-                  </button>
-                )}
-                {accountSession.mailUrl && (
-                  <button
-                    type="button"
-                    onClick={() => { window.location.href = accountSession.mailUrl!; }}
-                    className="w-full bg-zinc-900/60 hover:bg-zinc-800 border border-white/5 p-3 rounded-xl text-left text-[11px] font-bold text-zinc-300 transition-all"
-                  >
-                    My Mail
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => { window.location.href = accountSession.logoutUrl ?? `${RULE34_ORIGIN}/index.php?page=account&s=login&code=01`; }}
-                  className="w-full bg-zinc-950 hover:bg-red-950/40 border border-white/5 p-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-red-300 transition-all"
-                >
-                  Logout
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3">
-                <p className="text-[10px] text-zinc-500 px-1">Sign in to save favorites and sync your Rule34 account.</p>
-                <button
-                  type="button"
-                  onClick={() => { window.location.href = accountLoginUrl(); }}
-                  className="btn-theme w-full py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border border-white/10"
-                >
-                  Login
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { window.location.href = accountRegisterUrl(); }}
-                  className="w-full py-3 rounded-xl bg-zinc-900 border border-white/10 text-[10px] font-black uppercase tracking-widest text-zinc-300 hover:text-white transition-all"
-                >
-                  Create Account
-                </button>
-              </div>
-            )}
-          </div>
+          {data.type !== 'post' && renderProfilePanel()}
           
           {data.type === 'post' && (
             <div className="flex flex-col gap-4 p-5 rounded-2xl bg-white/[0.03] border border-white/5 shadow-inner">
@@ -1353,6 +1514,8 @@ const App = ({ initialData }: { initialData: PageData }) => {
                </div>
              </div>
           ))}
+
+          {data.type === 'post' && renderProfilePanel()}
 
           {data.type === 'list' && (
              <div className="space-y-10 pt-8 border-t border-white/5">
@@ -1723,6 +1886,8 @@ const App = ({ initialData }: { initialData: PageData }) => {
           </div>
         ) : data.type === 'post' ? (
           <>
+            {!lightboxOpen && (
+            <>
             {/* Navigation Overlays (Transparent areas that navigate directly) */}
             <div
                onClick={() => navigateToPost('prev')}
@@ -1749,38 +1914,28 @@ const App = ({ initialData }: { initialData: PageData }) => {
                   className={`bg-black/60 hover:bg-theme-primary border border-white/10 hover:border-theme-bright text-white hover:text-black rounded-2xl backdrop-blur-3xl transition-all shadow-2xl group glow-theme cursor-pointer active:opacity-70 ${isMobile ? 'p-3' : 'p-4'}`}>
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="group-hover:-translate-y-0.5 transition-transform"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                </button>
-            </div>
+             </div>
+            </>
+            )}
             
             <div 
               ref={postViewContainerRef}
-              className={`relative w-full h-full rounded-2xl overflow-hidden flex items-center justify-center group transition-all duration-300 ${scale > 1 ? 'cursor-grab' : 'cursor-zoom-in'}`}
+              className={`relative w-full h-full rounded-2xl overflow-hidden flex items-center justify-center group transition-all duration-300 ${
+                lightboxOpen ? 'fixed inset-0 z-[99999998] bg-black/98 rounded-none' : ''
+              } ${scale > 1 ? 'cursor-grab' : 'cursor-zoom-in'}`}
             >
                {data.mediaType === 'video' ? (
-                 <>
-                   {data.imageUrl && !mediaReady && (
-                     <img
-                       src={data.imageUrl}
-                       alt=""
-                       className="absolute max-w-full max-h-full object-contain opacity-80"
-                       draggable={false}
-                     />
-                   )}
-                 <video 
+                 <PostVideoPlayer
                    ref={videoRef}
                    key={data.highresUrl}
                    src={data.highresUrl}
-                   poster={data.imageUrl || undefined}
-                   muted
-                   autoPlay
-                   loop
-                   playsInline
-                   preload="auto"
-                   onLoadedData={() => setMediaReady(true)}
-                   onCanPlay={() => setMediaReady(true)}
-                   className={`max-w-full max-h-full object-contain transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${scale <= 1 ? 'group-hover:scale-[1.02]' : ''}`}
+                   poster={data.imageUrl}
+                   showControls={lightboxOpen}
+                   muted={videoMuted}
+                   onTap={isAndroidApp && lightboxOpen ? toggleAndroidLightboxUi : undefined}
+                   className={`max-w-full max-h-full object-contain transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${lightboxOpen ? 'max-h-[85vh] shadow-2xl rounded-lg' : ''} ${scale <= 1 && !lightboxOpen ? 'group-hover:scale-[1.02]' : ''}`}
                    style={scale > 1 ? { transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`, transformOrigin: 'center center' } : undefined}
                  />
-                 </>
                ) : (
                  <img 
                    ref={postImageRef}
@@ -1958,8 +2113,8 @@ const App = ({ initialData }: { initialData: PageData }) => {
         )}
       </div>
 
-      {/* Lightbox Overlay */}
-      {data.type === 'post' && lightboxOpen && (
+      {/* Lightbox Overlay — images only (video reuses the same player in post view) */}
+      {data.type === 'post' && lightboxOpen && data.mediaType !== 'video' && (
         <div 
           className="fixed inset-0 z-[99999999] bg-black/98 backdrop-blur-2xl flex flex-col items-center justify-center cursor-default animate-in fade-in duration-200 group/lightbox"
           onClick={(e) => {
@@ -2011,45 +2166,10 @@ const App = ({ initialData }: { initialData: PageData }) => {
             onMouseUp={() => setIsDragging(false)}
             onMouseLeave={() => setIsDragging(false)}
           >
-            {isMobile && data.mediaType !== 'video' && (
+            {isMobile && (
               <div ref={lightboxGestureRef} className="absolute inset-0 z-[12] mobile-gesture-layer" aria-hidden />
             )}
-            {data.mediaType === 'video' ? (
-              <div
-                className={`relative z-10 ${isDragging ? 'duration-0' : 'duration-300'} transition-transform`}
-                style={{
-                  transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-                  transformOrigin: 'center center',
-                }}
-              >
-                {data.imageUrl && !mediaReady && (
-                  <img
-                    src={data.imageUrl}
-                    alt=""
-                    className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl opacity-80"
-                    draggable={false}
-                  />
-                )}
-              <video 
-                ref={lightboxVideoRef}
-                key={data.highresUrl}
-                src={data.highresUrl}
-                poster={data.imageUrl || undefined}
-                controls
-                muted={videoMuted}
-                autoPlay
-                loop
-                playsInline
-                preload="auto"
-                onLoadedData={() => setMediaReady(true)}
-                onCanPlay={() => setMediaReady(true)}
-                className="max-w-full max-h-[85vh] shadow-2xl rounded-lg"
-                style={{ maxHeight: '85vh' }}
-                onClick={(e) => e.stopPropagation()}
-              />
-              </div>
-            ) : (
-              <img 
+            <img 
                 ref={imageRef}
                 src={data.highresUrl} 
                 style={{ 
@@ -2068,7 +2188,6 @@ const App = ({ initialData }: { initialData: PageData }) => {
                 }}
                 draggable={false}
               />
-            )}
           </div>
 
           <div className={`absolute top-6 right-6 z-10 flex gap-3 transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
@@ -2155,6 +2274,69 @@ const App = ({ initialData }: { initialData: PageData }) => {
                   className="text-zinc-400 hover:text-white hover:scale-110 active:scale-95 transition-all flex flex-col items-center">
                   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {data.type === 'post' && lightboxOpen && data.mediaType === 'video' && (
+        <div
+          className="fixed inset-0 z-[99999999] pointer-events-none"
+          onClick={(e) => {
+            if (e.target !== e.currentTarget) return;
+            if (isAndroidApp) {
+              if (!lightboxUiVisible) resetLightboxUiTimer();
+              else closeLightbox();
+              return;
+            }
+            closeLightbox();
+          }}
+        >
+          <div className={`absolute top-6 right-6 z-[200] lightbox-top-actions flex gap-3 pointer-events-auto transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-40' : 'opacity-100'}`}>
+            <LightboxChromeButton
+              onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags, data.mediaType)}
+              title="Download"
+              className="bg-black/60 hover:bg-theme-primary border border-white/10 hover:border-theme-bright text-white hover:text-black p-4 rounded-full backdrop-blur-3xl transition-all shadow-2xl group glow-theme cursor-pointer active:opacity-70"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            </LightboxChromeButton>
+            <LightboxChromeButton
+              onClick={() => closeLightbox()}
+              title="Close Lightbox"
+              className="w-12 h-12 rounded-full bg-white/5 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all border border-white/10 hover:scale-110 active:scale-95 shadow-xl"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </LightboxChromeButton>
+          </div>
+
+          <div
+            className={`absolute inset-x-3 bottom-3 flex flex-col items-stretch gap-3 z-[200] lightbox-mobile-controls pointer-events-auto transition-all duration-300 ${isAndroidApp && !lightboxUiVisible ? 'lightbox-ui-hidden opacity-0 pointer-events-none' : 'opacity-100'}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isAndroidApp) resetLightboxUiTimer();
+            }}
+          >
+            {isPlaying && (
+              <div className="lightbox-progress-track">
+                <div className="lightbox-progress-fill" style={{ width: `${(slideTick / slideMaxTicks) * 100}%` }}></div>
+              </div>
+            )}
+            <div className="glass-panel bg-black/60 px-4 py-3 rounded-2xl flex items-center justify-center gap-4 shadow-[0_0_30px_rgba(0,0,0,0.8)] border border-white/10 flex-wrap">
+              <BoutiqueSelect value={slideshowInterval} onChange={setSlideshowInterval} options={[2, 3, 5, 8, 10]} title="Slideshow Interval" />
+              <div className="w-px h-8 bg-white/10 hidden sm:block" />
+              <button type="button" onClick={(e) => { e.stopPropagation(); navigateToPost('prev'); }} disabled={loading} title="Previous" className="lightbox-control-btn text-white p-2 rounded-full cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
+              </button>
+              <button type="button" onClick={(e) => { e.stopPropagation(); setIsPlaying(!isPlaying); }} title={isPlaying ? 'Pause slideshow' : 'Start slideshow'} className={`lightbox-play-btn ${!isPlaying ? 'opacity-80' : ''}`}>
+                {isPlaying ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="ml-0.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                )}
+              </button>
+              <button type="button" onClick={(e) => { e.stopPropagation(); navigateToPost('next'); }} disabled={loading} title="Next" className="lightbox-control-btn text-white p-2 rounded-full cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+              </button>
             </div>
           </div>
         </div>
