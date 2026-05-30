@@ -35,6 +35,40 @@ const VIDEO_SLIDESHOW_RATIO = 0.65;
 const MAX_ZOOM_SCALE = 4;
 const MIN_PINCH_DISTANCE = 32;
 
+const isLoadingShellVisible = () =>
+  typeof document !== 'undefined' && document.documentElement.classList.contains('r34pro-loading');
+
+const pauseAllPageMedia = () => {
+  (window as any).__r34proPauseAllMedia?.();
+  document.querySelectorAll('video, audio').forEach((element) => {
+    const media = element as HTMLMediaElement;
+    try {
+      media.pause();
+      media.muted = true;
+      media.autoplay = false;
+      media.removeAttribute('autoplay');
+    } catch {
+      /* ignore per-element failures */
+    }
+  });
+};
+
+const useAppUiReady = () => {
+  const [uiReady, setUiReady] = useState(() => !isLoadingShellVisible());
+
+  useEffect(() => {
+    const sync = () => {
+      if (!isLoadingShellVisible()) setUiReady(true);
+    };
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
+  return uiReady;
+};
+
 const stopLightboxChromeEvent = (event: React.SyntheticEvent) => {
   event.stopPropagation();
 };
@@ -226,6 +260,17 @@ const PostVideoPlayer = forwardRef(function PostVideoPlayer(
 ) {
   const [buffering, setBuffering] = useState(false);
   const bufferTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const innerRef = useRef<HTMLVideoElement>(null);
+  const uiReady = useAppUiReady();
+
+  const setVideoRef = useCallback(
+    (element: HTMLVideoElement | null) => {
+      innerRef.current = element;
+      if (typeof ref === 'function') ref(element);
+      else if (ref) (ref as React.MutableRefObject<HTMLVideoElement | null>).current = element;
+    },
+    [ref]
+  );
 
   const clearBufferTimer = useCallback(() => {
     if (bufferTimer.current) {
@@ -246,18 +291,37 @@ const PostVideoPlayer = forwardRef(function PostVideoPlayer(
 
   useEffect(() => () => clearBufferTimer(), [clearBufferTimer]);
 
+  useEffect(() => {
+    const video = innerRef.current;
+    if (!video) return;
+
+    if (!uiReady) {
+      video.pause();
+      return;
+    }
+
+    void video.play().catch(() => {});
+
+    return () => {
+      video.pause();
+    };
+  }, [uiReady, src]);
+
+  useEffect(() => () => {
+    innerRef.current?.pause();
+  }, []);
+
   return (
     <div className="relative flex items-center justify-center max-w-full max-h-full">
       <video
-        ref={ref}
+        ref={setVideoRef}
         src={src}
         poster={poster}
         controls={showControls}
         muted={muted}
-        autoPlay
         loop
         playsInline
-        preload="auto"
+        preload={uiReady ? 'auto' : 'metadata'}
         onWaiting={markBuffering}
         onPlaying={markReady}
         onCanPlay={markReady}
@@ -410,6 +474,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
   });
 
   const isAndroidApp = typeof window !== 'undefined' && !!(window as any).R34ProAndroid;
+  const uiReady = useAppUiReady();
   const showSearchLanding =
     isAndroidApp &&
     initialData.type === 'list' &&
@@ -523,6 +588,29 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
   useEffect(() => {
     (window as any).__r34proDismissLoadingShell?.();
+  }, []);
+
+  useEffect(() => {
+    if (!uiReady) {
+      videoRef.current?.pause();
+    }
+  }, [uiReady]);
+
+  useEffect(() => {
+    document.querySelectorAll('body > *:not(#reframer-root):not(.void-navigator-root) video, body > *:not(#reframer-root):not(.void-navigator-root) audio').forEach((element) => {
+      try {
+        (element as HTMLMediaElement).pause();
+      } catch {
+        /* ignore */
+      }
+    });
+  }, [postId]);
+
+  useEffect(() => {
+    return () => {
+      videoRef.current?.pause();
+      pauseAllPageMedia();
+    };
   }, []);
 
   const refreshAccountSession = useCallback(async () => {
@@ -838,11 +926,12 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
   useEffect(() => {
     if (!isPlaying || data.type !== 'post' || data.mediaType !== 'video') return;
+    if (!uiReady) return;
     const video = videoRef.current;
     if (!video) return;
     video.currentTime = 0;
     void video.play().catch(() => {});
-  }, [isPlaying, postId, lightboxOpen, data.type, data.type === 'post' ? data.mediaType : null]);
+  }, [isPlaying, postId, lightboxOpen, data.type, data.type === 'post' ? data.mediaType : null, uiReady]);
 
   useEffect(() => {
     return () => {
@@ -915,6 +1004,9 @@ const App = ({ initialData }: { initialData: PageData }) => {
       const target = new URL(url, RULE34_ORIGIN);
       appendR34NavParams(target);
       if (isMobile) setSidebarOpen(false);
+      videoRef.current?.pause();
+      pauseAllPageMedia();
+      (window as any).__r34proShowLoadingShell?.();
       window.location.href = target.href;
     }
   }, [data, appendR34NavParams, isMobile]);
@@ -2427,9 +2519,7 @@ export default defineContentScript({
     const data = parseRule34Page(document, new URLSearchParams(window.location.search));
     if (!data) return;
 
-    (window as any).__r34proDismissLoadingShell?.();
-
-    // Root isolation is handled via .void-active class toggling in the App component.
+    // Keep the loading shell visible until React mounts; dismiss happens from App/verifyInjection.
 
     const rootContainer = document.createElement('div');
     rootContainer.id = 'reframer-root';
