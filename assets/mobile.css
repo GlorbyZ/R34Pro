@@ -8,6 +8,33 @@ html.r34pro-android .void-navigator-root {
   font-size: clamp(16px, 4.2vw, 18px);
 }
 
+html.r34pro-android,
+html.r34pro-android body.r34pro-mobile.void-active {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+  max-width: 100%;
+}
+
+html.r34pro-android .void-navigator-root {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+html.r34pro-android .void-navigator-root .mobile-search-landing {
+  width: 100%;
+  max-width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+html.r34pro-android .void-navigator-root .mobile-gesture-layer {
+  touch-action: none;
+}
+
 html.r34pro-android body.r34pro-mobile.void-active,
 html.r34pro-android body.r34pro-mobile.void-active html {
   touch-action: pan-y;
@@ -150,6 +177,20 @@ html.r34pro-android .void-navigator-root .mobile-top-bar .text-\[10px\] {
 
   .void-navigator-root .mobile-main {
     min-height: 0;
+    overflow: hidden;
+    max-width: 100%;
+  }
+
+  .void-navigator-root .mobile-search-landing {
+    width: 100%;
+    max-width: 100%;
+    min-height: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .void-navigator-root .mobile-gesture-layer {
+    touch-action: none;
   }
 
   .void-navigator-root .mobile-grid {

@@ -106,6 +106,10 @@ export function parseRule34Page(doc: Document, searchParams?: URLSearchParams): 
 
     if (!highresUrl && imageEl) highresUrl = imageEl.src;
 
+    if (highresUrl) {
+      highresUrl = toAbsoluteRule34Url(highresUrl) ?? highresUrl;
+    }
+
     const tags: TagData[] = [];
     doc.querySelectorAll('#tag-sidebar li').forEach((li) => {
       const typeClass = Array.from(li.classList).find((c) => c.startsWith('tag-type-'));
@@ -148,7 +152,10 @@ export function parseRule34Page(doc: Document, searchParams?: URLSearchParams): 
     return {
       type: 'post',
       id,
-      imageUrl: imageEl?.src ?? (videoEl as HTMLVideoElement)?.poster ?? '',
+      imageUrl: (() => {
+        const raw = imageEl?.src ?? (videoEl as HTMLVideoElement)?.poster ?? '';
+        return raw ? (toAbsoluteRule34Url(raw) ?? raw) : '';
+      })(),
       highresUrl,
       tags,
       title: doc.title,

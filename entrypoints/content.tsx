@@ -146,8 +146,20 @@ const App = ({ initialData }: { initialData: PageData }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const postViewContainerRef = useRef<HTMLDivElement>(null);
   const mainContentRef = useRef<HTMLDivElement>(null);
+  const postGestureRef = useRef<HTMLDivElement>(null);
+  const lightboxGestureRef = useRef<HTMLDivElement>(null);
   const touchGestureRef = useRef<'none' | 'pan' | 'pinch' | 'swipe'>('none');
   const swipeHandledRef = useRef(false);
+  const scaleRef = useRef(1);
+  const positionRef = useRef({ x: 0, y: 0 });
+  const lightboxOpenRef = useRef(lightboxOpen);
+  const navigateToPostRef = useRef<(direction: 'prev' | 'next') => void>(() => {});
+  const resetLightboxUiTimerRef = useRef<() => void>(() => {});
+  const toggleAndroidLightboxUiRef = useRef<() => void>(() => {});
+  const isAndroidAppRef = useRef(isAndroidApp);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const lightboxVideoRef = useRef<HTMLVideoElement>(null);
+  const [videoMuted, setVideoMuted] = useState(true);
 
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -162,6 +174,10 @@ const App = ({ initialData }: { initialData: PageData }) => {
   
   useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => { loadingRef.current = loading; }, [loading]);
+  useEffect(() => { scaleRef.current = scale; }, [scale]);
+  useEffect(() => { positionRef.current = position; }, [position]);
+  useEffect(() => { lightboxOpenRef.current = lightboxOpen; }, [lightboxOpen]);
+  useEffect(() => { isAndroidAppRef.current = isAndroidApp; }, [isAndroidApp]);
 
   useEffect(() => {
     (window as any).__r34proDismissLoadingShell?.();
@@ -271,6 +287,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
   useEffect(() => {
     setScale(1);
     setPosition({ x: 0, y: 0 });
+    setVideoMuted(true);
   }, [postId, lightboxOpen]);
 
   useEffect(() => {
@@ -375,6 +392,10 @@ const App = ({ initialData }: { initialData: PageData }) => {
     }
   }, [data, appendR34NavParams, isMobile]);
 
+  useEffect(() => { navigateToPostRef.current = navigateToPost; }, [navigateToPost]);
+  useEffect(() => { resetLightboxUiTimerRef.current = resetLightboxUiTimer; }, [resetLightboxUiTimer]);
+  useEffect(() => { toggleAndroidLightboxUiRef.current = toggleAndroidLightboxUi; }, [toggleAndroidLightboxUi]);
+
   const fetchNeighbors = useCallback(async (postId: string, tags: string) => {
     try {
       const baseUrl = `${RULE34_ORIGIN}/public/post_helpers2.php?action=fetch_id_cache`;
@@ -477,13 +498,14 @@ const App = ({ initialData }: { initialData: PageData }) => {
   useEffect(() => {
     if (!isMobile || data.type !== 'post') return;
 
-    const container = lightboxOpen ? containerRef.current : mainContentRef.current;
+    const container = lightboxOpen ? lightboxGestureRef.current : postGestureRef.current;
     if (!container) return;
 
     let startX = 0;
     let startY = 0;
     let initialDistance = 0;
     let initialScale = 1;
+    let gesture: 'none' | 'pan' | 'pinch' | 'swipe' = 'none';
 
     const getDistance = (touches: TouchList) => {
       if (touches.length < 2) return 0;
@@ -495,28 +517,33 @@ const App = ({ initialData }: { initialData: PageData }) => {
     const onTouchStart = (event: TouchEvent) => {
       swipeHandledRef.current = false;
       if (event.touches.length === 2) {
+        gesture = 'pinch';
         touchGestureRef.current = 'pinch';
         initialDistance = getDistance(event.touches);
-        initialScale = scale;
-        if (isAndroidApp && lightboxOpen) resetLightboxUiTimer();
+        initialScale = scaleRef.current;
+        if (isAndroidAppRef.current && lightboxOpenRef.current) {
+          resetLightboxUiTimerRef.current();
+        }
         return;
       }
 
       if (event.touches.length === 1) {
         startX = event.touches[0].clientX;
         startY = event.touches[0].clientY;
-        if (scale > 1) {
+        if (scaleRef.current > 1) {
+          gesture = 'pan';
           touchGestureRef.current = 'pan';
-          dragStart.current = { x: startX - position.x, y: startY - position.y };
+          dragStart.current = { x: startX - positionRef.current.x, y: startY - positionRef.current.y };
           setIsDragging(true);
         } else {
+          gesture = 'none';
           touchGestureRef.current = 'none';
         }
       }
     };
 
     const onTouchMove = (event: TouchEvent) => {
-      if (touchGestureRef.current === 'pinch' && event.touches.length === 2 && initialDistance) {
+      if (gesture === 'pinch' && event.touches.length === 2 && initialDistance) {
         event.preventDefault();
         const distance = getDistance(event.touches);
         const nextScale = Math.min(Math.max(1, initialScale * (distance / initialDistance)), 8);
@@ -525,7 +552,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
         return;
       }
 
-      if (touchGestureRef.current === 'pan' && event.touches.length === 1 && scale > 1) {
+      if (gesture === 'pan' && event.touches.length === 1 && scaleRef.current > 1) {
         event.preventDefault();
         setPosition({
           x: event.touches[0].clientX - dragStart.current.x,
@@ -534,11 +561,13 @@ const App = ({ initialData }: { initialData: PageData }) => {
         return;
       }
 
-      if (event.touches.length === 1 && scale <= 1 && touchGestureRef.current !== 'pinch') {
+      if (event.touches.length === 1 && scaleRef.current <= 1 && gesture !== 'pinch') {
         const dx = event.touches[0].clientX - startX;
         const dy = event.touches[0].clientY - startY;
-        if (Math.abs(dx) > 16 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+        if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.1) {
+          gesture = 'swipe';
           touchGestureRef.current = 'swipe';
+          event.preventDefault();
         }
       }
     };
@@ -549,37 +578,53 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
       const deltaX = touch.clientX - startX;
       const deltaY = touch.clientY - startY;
+      const travel = Math.hypot(deltaX, deltaY);
 
-      if (touchGestureRef.current === 'pinch' || touchGestureRef.current === 'pan') {
+      if (gesture === 'pinch' || gesture === 'pan') {
+        gesture = 'none';
         touchGestureRef.current = 'none';
         setIsDragging(false);
-        if (scale <= 1.05) {
+        if (scaleRef.current <= 1.05) {
           setScale(1);
           setPosition({ x: 0, y: 0 });
         }
         return;
       }
 
-      if (scale > 1) {
+      if (scaleRef.current > 1) {
+        gesture = 'none';
         touchGestureRef.current = 'none';
         return;
       }
 
-      if (lightboxOpen && deltaY > 90 && deltaY > Math.abs(deltaX) * 1.3) {
+      if (lightboxOpenRef.current && deltaY > 90 && deltaY > Math.abs(deltaX) * 1.3) {
         setLightboxOpen(false);
+        gesture = 'none';
         touchGestureRef.current = 'none';
         return;
       }
 
       if (
-        touchGestureRef.current === 'swipe' ||
-        (Math.abs(deltaX) >= 56 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2)
+        gesture === 'swipe' ||
+        (Math.abs(deltaX) >= 48 && Math.abs(deltaX) > Math.abs(deltaY) * 1.1)
       ) {
         swipeHandledRef.current = true;
-        if (deltaX > 0) navigateToPost('prev');
-        else navigateToPost('next');
+        if (deltaX > 0) navigateToPostRef.current('prev');
+        else navigateToPostRef.current('next');
+        gesture = 'none';
+        touchGestureRef.current = 'none';
+        return;
       }
 
+      if (travel < 14 && !swipeHandledRef.current) {
+        if (lightboxOpenRef.current) {
+          if (isAndroidAppRef.current) toggleAndroidLightboxUiRef.current();
+        } else {
+          setLightboxOpen(true);
+        }
+      }
+
+      gesture = 'none';
       touchGestureRef.current = 'none';
     };
 
@@ -591,16 +636,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
       container.removeEventListener('touchmove', onTouchMove);
       container.removeEventListener('touchend', onTouchEnd);
     };
-  }, [
-    isMobile,
-    isAndroidApp,
-    data.type,
-    lightboxOpen,
-    scale,
-    position,
-    navigateToPost,
-    resetLightboxUiTimer,
-  ]);
+  }, [isMobile, data.type, lightboxOpen, postId]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -752,7 +788,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
   }
 
   return (
-    <div className={`w-screen h-screen flex bg-black text-zinc-100 overflow-hidden font-sans fixed inset-0 z-[99999999] void-navigator-root ${isMobile ? 'flex-col' : 'flex-row'}`}>
+    <div className={`w-full h-full max-w-full flex bg-black text-zinc-100 overflow-hidden font-sans fixed inset-0 z-[99999999] void-navigator-root ${isMobile ? 'flex-col' : 'flex-row'}`}>
        {/* Walkthrough Tutorial Overlay */}
        {showWalkthrough && (
          <div className="fixed inset-0 z-[1000000000] bg-black/98 backdrop-blur-3xl flex items-center justify-center p-4 md:p-12 animate-in fade-in duration-700">
@@ -878,7 +914,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
           />
         )}
         <div className={`${isMobile
-          ? `fixed inset-y-0 left-0 z-[130] w-[min(100vw,320px)] mobile-sidebar transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`
+          ? `fixed inset-y-0 left-0 z-[130] w-[min(100%,22rem)] max-w-[320px] mobile-sidebar transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`
           : 'w-[380px] relative'
         } h-full flex-shrink-0 bg-black border-r border-white/10 flex flex-col z-[100] focus:outline-none`}>
         <div className={`${isMobile ? 'py-6' : 'py-12'} flex items-center justify-center gap-6 border-b border-white/5 relative px-6`}>
@@ -1283,8 +1319,11 @@ const App = ({ initialData }: { initialData: PageData }) => {
       {/* Main Content Area */}
       <div
         ref={mainContentRef}
-        className={`flex-1 relative flex flex-col items-center justify-center overflow-hidden bg-zinc-950/50 mobile-main ${isMobile ? `pt-[calc(4.25rem+env(safe-area-inset-top))] ${data.type === 'post' && !lightboxOpen ? 'pb-[calc(5rem+env(safe-area-inset-bottom))]' : 'pb-2'} px-2` : 'p-4 md:p-8'}`}
+        className={`flex-1 relative flex flex-col items-center justify-center overflow-hidden bg-zinc-950/50 mobile-main ${showSearchLanding ? 'overflow-x-hidden overscroll-none' : ''} ${isMobile ? `pt-[calc(4.25rem+env(safe-area-inset-top))] ${data.type === 'post' && !lightboxOpen ? 'pb-[calc(5rem+env(safe-area-inset-bottom))]' : 'pb-2'} px-2` : 'p-4 md:p-8'}`}
       >
+        {data.type === 'post' && !lightboxOpen && isMobile && (
+          <div ref={postGestureRef} className="absolute inset-0 z-[8] mobile-gesture-layer" aria-hidden />
+        )}
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-700 via-zinc-950 to-zinc-950 pointer-events-none"></div>
         {loading && (
            <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 z-20 backdrop-blur-md transition-all duration-300">
@@ -1325,19 +1364,18 @@ const App = ({ initialData }: { initialData: PageData }) => {
             <div 
               ref={postViewContainerRef}
               className={`relative w-full h-full rounded-2xl overflow-hidden glass-panel flex items-center justify-center group shadow-2xl transition-all duration-300 bg-zinc-900/50 ${scale > 1 ? 'cursor-grab' : 'cursor-zoom-in'}`}
-              onClick={() => {
-                if (scale <= 1 && !isDragging) setLightboxOpen(true);
-              }}
             >
                {data.mediaType === 'video' ? (
                  <video 
+                   ref={videoRef}
                    key={data.highresUrl}
                    src={data.highresUrl}
                    muted
                    autoPlay
                    loop
                    playsInline
-                   className={`max-w-full max-h-full object-contain transition-transform duration-300 ${loading ? 'opacity-0 scale-95' : 'opacity-100'} ${scale <= 1 ? 'group-hover:scale-[1.02]' : ''}`}
+                   preload="metadata"
+                   className={`max-w-full max-h-full object-contain transition-transform duration-300 pointer-events-none ${loading ? 'opacity-0 scale-95' : 'opacity-100'} ${scale <= 1 ? 'group-hover:scale-[1.02]' : ''}`}
                    style={scale > 1 ? { transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`, transformOrigin: 'center center' } : undefined}
                  />
                ) : (
@@ -1355,14 +1393,14 @@ const App = ({ initialData }: { initialData: PageData }) => {
                <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none flex items-end justify-center pb-8 ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity duration-300`}>
                  <span className="text-white backdrop-blur-md px-6 py-2.5 rounded-full bg-black/60 font-medium text-sm border border-white/10 flex items-center gap-2 shadow-xl translate-y-0">
                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-                   {isMobile ? 'Tap for fullscreen · Pinch to zoom' : 'Enter Fullscreen Lightbox'}
+                   {isMobile ? 'Tap for fullscreen · Swipe for next · Pinch to zoom' : 'Enter Fullscreen Lightbox'}
                  </span>
                </div>
                )}
             </div>
           </>
         ) : showSearchLanding ? (
-          <div className="w-full h-full flex flex-col items-center justify-center p-6 gap-8 overflow-y-auto">
+          <div className="mobile-search-landing w-full flex-1 min-h-0 flex flex-col items-center justify-center p-6 gap-6 overflow-hidden">
             <img
               src={chrome.runtime.getURL('logo.webp')}
               className="w-24 h-24 rounded-3xl shadow-[0_0_50px_rgba(212,175,55,0.35)] border border-theme-primary/30 object-contain p-2 bg-black/40"
@@ -1533,9 +1571,6 @@ const App = ({ initialData }: { initialData: PageData }) => {
           <div 
             ref={containerRef}
             className="relative w-full h-full flex items-center justify-center overflow-hidden"
-            onClick={() => {
-              if (isAndroidApp) toggleAndroidLightboxUi();
-            }}
             onMouseDown={(e) => {
               if (scale > 1) {
                 setIsDragging(true);
@@ -1553,15 +1588,23 @@ const App = ({ initialData }: { initialData: PageData }) => {
             onMouseUp={() => setIsDragging(false)}
             onMouseLeave={() => setIsDragging(false)}
           >
+            {isMobile && (
+              <div ref={lightboxGestureRef} className="absolute inset-0 z-[12] mobile-gesture-layer" aria-hidden />
+            )}
             {data.mediaType === 'video' ? (
               <video 
+                ref={lightboxVideoRef}
+                key={data.highresUrl}
                 src={data.highresUrl}
-                controls
+                controls={!isMobile}
+                muted={videoMuted}
                 autoPlay
                 loop
-                className="max-w-full max-h-[85vh] shadow-2xl rounded-lg z-10"
+                playsInline
+                preload="metadata"
+                className={`max-w-full max-h-[85vh] shadow-2xl rounded-lg z-10 ${isMobile ? 'pointer-events-none' : ''}`}
                 style={{ maxHeight: '85vh' }}
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => !isMobile && e.stopPropagation()}
               />
             ) : (
               <img 
@@ -1587,6 +1630,20 @@ const App = ({ initialData }: { initialData: PageData }) => {
           </div>
 
           <div className={`absolute top-6 right-6 z-10 flex gap-3 transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+            {data.mediaType === 'video' && isMobile && (
+              <button
+                type="button"
+                onClick={() => setVideoMuted((m) => !m)}
+                className="bg-black/60 hover:bg-theme-primary border border-white/10 hover:border-theme-bright text-white hover:text-black p-4 rounded-full backdrop-blur-3xl transition-all shadow-2xl cursor-pointer active:opacity-70"
+                title={videoMuted ? 'Unmute video' : 'Mute video'}
+              >
+                {videoMuted ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                )}
+              </button>
+            )}
             <button 
                 onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags)}
                 className="bg-black/60 hover:bg-theme-primary border border-white/10 hover:border-theme-bright text-white hover:text-black p-4 rounded-full backdrop-blur-3xl transition-all shadow-2xl group glow-theme cursor-pointer active:opacity-70"
