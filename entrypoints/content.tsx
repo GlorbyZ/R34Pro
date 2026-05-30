@@ -119,10 +119,20 @@ const App = ({ initialData }: { initialData: PageData }) => {
   });
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
-    const mobile =
-      window.matchMedia('(max-width: 900px)').matches || !!(window as any).R34ProAndroid;
+    const android = !!(window as any).R34ProAndroid;
+    if (android) return false;
+    const mobile = window.matchMedia('(max-width: 900px)').matches;
     return !mobile;
   });
+
+  const isAndroidApp = typeof window !== 'undefined' && !!(window as any).R34ProAndroid;
+  const showSearchLanding =
+    isAndroidApp &&
+    initialData.type === 'list' &&
+    initialData.searchTags === 'all' &&
+    currentParams.get('r34_browse') !== '1';
+  const [lightboxUiVisible, setLightboxUiVisible] = useState(true);
+  const lightboxUiTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Zoom/Pan State
   const [scale, setScale] = useState(1);
@@ -147,6 +157,45 @@ const App = ({ initialData }: { initialData: PageData }) => {
   useEffect(() => { loadingRef.current = loading; }, [loading]);
 
   useEffect(() => {
+    (window as any).__r34proDismissLoadingShell?.();
+  }, []);
+
+  const resetLightboxUiTimer = useCallback(() => {
+    if (!isAndroidApp) return;
+    if (lightboxUiTimer.current) clearTimeout(lightboxUiTimer.current);
+    setLightboxUiVisible(true);
+    lightboxUiTimer.current = setTimeout(() => {
+      setLightboxUiVisible(false);
+    }, 4000);
+  }, [isAndroidApp]);
+
+  const toggleAndroidLightboxUi = useCallback(() => {
+    if (!isAndroidApp) return;
+    setLightboxUiVisible((visible) => {
+      const next = !visible;
+      if (next) {
+        if (lightboxUiTimer.current) clearTimeout(lightboxUiTimer.current);
+        lightboxUiTimer.current = setTimeout(() => setLightboxUiVisible(false), 4000);
+      } else if (lightboxUiTimer.current) {
+        clearTimeout(lightboxUiTimer.current);
+      }
+      return next;
+    });
+  }, [isAndroidApp]);
+
+  useEffect(() => {
+    if (!isAndroidApp || !lightboxOpen) {
+      if (lightboxUiTimer.current) clearTimeout(lightboxUiTimer.current);
+      setLightboxUiVisible(true);
+      return;
+    }
+    resetLightboxUiTimer();
+    return () => {
+      if (lightboxUiTimer.current) clearTimeout(lightboxUiTimer.current);
+    };
+  }, [isAndroidApp, lightboxOpen, resetLightboxUiTimer]);
+
+  useEffect(() => {
     const media = window.matchMedia('(max-width: 900px)');
     const syncMobile = () => {
       const mobile = media.matches || !!(window as any).R34ProAndroid;
@@ -155,7 +204,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
       if ((window as any).R34ProAndroid) {
         document.documentElement.classList.add('r34pro-android');
       }
-      if (mobile) setSidebarOpen(false);
+      if (mobile && !(window as any).R34ProAndroid) setSidebarOpen(false);
     };
     syncMobile();
     media.addEventListener('change', syncMobile);
@@ -166,6 +215,12 @@ const App = ({ initialData }: { initialData: PageData }) => {
   }, []);
 
   const effectiveGridSize = isMobile ? Math.min(gridSize, 2) : gridSize;
+
+  const submitSearch = (tags: string) => {
+    const trimmed = tags.trim();
+    if (!trimmed) return;
+    window.location.href = `${RULE34_ORIGIN}/index.php?page=post&s=list&tags=${encodeURIComponent(trimmed)}`;
+  };
 
   const postId = data.type === 'post' ? data.id : null;
 
@@ -369,7 +424,8 @@ const App = ({ initialData }: { initialData: PageData }) => {
   }, [navigateToPost, setIsPlaying, setLightboxOpen, isPlaying, lightboxOpen]);
 
   useEffect(() => {
-    if (!isMobile || data.type !== 'post' || lightboxOpen) return;
+    if (!isMobile || data.type !== 'post') return;
+    if (lightboxOpen && !isAndroidApp) return;
 
     let startX = 0;
     let startY = 0;
@@ -387,6 +443,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
       const deltaY = touch.clientY - startY;
       if (Math.abs(deltaX) < 72 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
 
+      if (isAndroidApp && lightboxOpen) resetLightboxUiTimer();
       if (deltaX > 0) navigateToPost('prev');
       else navigateToPost('next');
     };
@@ -397,7 +454,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
       window.removeEventListener('touchstart', onTouchStart);
       window.removeEventListener('touchend', onTouchEnd);
     };
-  }, [isMobile, data.type, lightboxOpen, navigateToPost]);
+  }, [isMobile, isAndroidApp, data.type, lightboxOpen, navigateToPost, resetLightboxUiTimer]);
 
   useEffect(() => {
     if (!isMobile || !lightboxOpen) return;
@@ -1033,7 +1090,13 @@ const App = ({ initialData }: { initialData: PageData }) => {
           <div className="flex-1 min-w-0">
             <div className="text-[11px] font-black uppercase tracking-[0.2em] text-theme-primary">R34 Pro</div>
             <div className="text-[10px] text-zinc-500 truncate">
-              {data.type === 'post' ? `Post ${data.id}` : data.searchTags === 'all' ? 'All posts' : data.searchTags.replace(/_/g, ' ')}
+              {showSearchLanding
+                ? 'Search'
+                : data.type === 'post'
+                  ? `Post ${data.id}`
+                  : data.searchTags === 'all'
+                    ? 'All posts'
+                    : data.searchTags.replace(/_/g, ' ')}
             </div>
           </div>
           {data.type === 'post' && (
@@ -1167,6 +1230,75 @@ const App = ({ initialData }: { initialData: PageData }) => {
                </div>
             </div>
           </>
+        ) : showSearchLanding ? (
+          <div className="w-full h-full flex flex-col items-center justify-center p-6 gap-8 overflow-y-auto">
+            <img
+              src={chrome.runtime.getURL('logo.webp')}
+              className="w-24 h-24 rounded-3xl shadow-[0_0_50px_rgba(212,175,55,0.35)] border border-theme-primary/30 object-contain p-2 bg-black/40"
+              alt="R34 Pro"
+            />
+            <div className="text-center space-y-3 max-w-md">
+              <h1 className="text-2xl font-black uppercase tracking-[0.2em] text-white">R34 Pro Search</h1>
+              <p className="text-sm text-zinc-400">Enter tags to browse Rule34 with the full reskin experience.</p>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitSearch(searchValue);
+              }}
+              className="w-full max-w-md flex flex-col gap-4"
+            >
+              <div className="relative">
+                <input
+                  name="tags"
+                  type="text"
+                  value={searchValue}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                  placeholder="e.g. tag1 tag2"
+                  className="w-full bg-zinc-950 border border-white/10 rounded-2xl text-base px-5 py-4 focus:border-theme-primary/50 transition !text-white shadow-inner font-medium"
+                  autoComplete="off"
+                  autoFocus
+                />
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-950 border border-white/10 rounded-xl shadow-2xl z-[200] max-h-64 overflow-y-auto p-1">
+                    {suggestions.map((s, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          const parts = searchValue.split(' ');
+                          parts.pop();
+                          const newVal = [...parts, s].join(' ') + ' ';
+                          setSearchValue(newVal);
+                          setSuggestions([]);
+                          setShowSuggestions(false);
+                        }}
+                        className="px-4 py-3 text-sm hover:bg-theme-primary/10 hover:text-theme-primary cursor-pointer transition-all rounded-lg text-zinc-400"
+                      >
+                        {s.replace(/_/g, ' ')}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                type="submit"
+                className="btn-theme w-full py-4 rounded-2xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 font-black text-sm uppercase tracking-[0.2em] shadow-xl border border-white/10"
+              >
+                Search Rule34
+              </button>
+            </form>
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = `${RULE34_ORIGIN}/index.php?page=post&s=list&tags=all&r34_browse=1`;
+              }}
+              className="text-xs font-bold uppercase tracking-widest text-zinc-500 hover:text-theme-primary transition-colors"
+            >
+              Browse all posts
+            </button>
+          </div>
         ) : (
           <div className="w-full h-full overflow-y-auto scrollbar-hide mobile-grid">
              <div 
@@ -1242,7 +1374,16 @@ const App = ({ initialData }: { initialData: PageData }) => {
         <div 
           className="fixed inset-0 z-[99999999] bg-black/98 backdrop-blur-2xl flex flex-col items-center justify-center cursor-default animate-in fade-in duration-200 group/lightbox"
           onClick={(e) => {
-             if (e.target === e.currentTarget) setLightboxOpen(false);
+             if (e.target !== e.currentTarget) return;
+             if (isAndroidApp) {
+               if (!lightboxUiVisible) {
+                 resetLightboxUiTimer();
+               } else {
+                 setLightboxOpen(false);
+               }
+               return;
+             }
+             setLightboxOpen(false);
           }}
         >
           {loading && (
@@ -1264,6 +1405,9 @@ const App = ({ initialData }: { initialData: PageData }) => {
           <div 
             ref={containerRef}
             className="relative w-full h-full flex items-center justify-center overflow-hidden"
+            onClick={() => {
+              if (isAndroidApp) toggleAndroidLightboxUi();
+            }}
             onMouseDown={(e) => {
               if (scale > 1) {
                 setIsDragging(true);
@@ -1305,13 +1449,16 @@ const App = ({ initialData }: { initialData: PageData }) => {
                 }}
                 className={`shadow-2xl rounded-lg transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${loading ? 'opacity-50' : 'opacity-100'}`}
                 alt="Highres"
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isAndroidApp) toggleAndroidLightboxUi();
+                }}
                 draggable={false}
               />
             )}
           </div>
 
-          <div className="absolute top-6 right-6 z-10 flex gap-3">
+          <div className={`absolute top-6 right-6 z-10 flex gap-3 transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
             <button 
                 onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags)}
                 className="bg-black/60 hover:bg-theme-primary border border-white/10 hover:border-theme-bright text-white hover:text-black p-4 rounded-full backdrop-blur-3xl transition-all shadow-2xl group glow-theme cursor-pointer active:opacity-70"
@@ -1329,8 +1476,11 @@ const App = ({ initialData }: { initialData: PageData }) => {
           </div>
 
           <div 
-             className={`absolute top-6 left-6 flex flex-col items-start gap-4 z-50 lightbox-mobile-controls ${isMobile ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-10 group-hover/lightbox:opacity-100 group-hover/lightbox:translate-x-0'} transition-all duration-300`}
-             onClick={e => e.stopPropagation()}
+             className={`absolute top-6 left-6 flex flex-col items-start gap-4 z-50 lightbox-mobile-controls transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-0 pointer-events-none' : isMobile ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-10 group-hover/lightbox:opacity-100 group-hover/lightbox:translate-x-0'} transition-all duration-300`}
+             onClick={e => {
+               e.stopPropagation();
+               if (isAndroidApp) resetLightboxUiTimer();
+             }}
           >
             {isPlaying && (
               <div className="lightbox-progress-track">
@@ -1424,6 +1574,7 @@ export default defineContentScript({
     setTimeout(() => {
         const root = createRoot(rootContainer);
         root.render(<App initialData={data} />);
+        (window as any).__r34proDismissLoadingShell?.();
     }, 0);
   }
 });
