@@ -131,7 +131,9 @@ const App = ({ initialData }: { initialData: PageData }) => {
     initialData.type === 'list' &&
     initialData.searchTags === 'all' &&
     currentParams.get('r34_browse') !== '1';
-  const [lightboxUiVisible, setLightboxUiVisible] = useState(true);
+  const [lightboxUiVisible, setLightboxUiVisible] = useState(
+    () => new URL(window.location.href).searchParams.get('r34_ui') !== '0'
+  );
   const lightboxUiTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Zoom/Pan State
@@ -143,7 +145,9 @@ const App = ({ initialData }: { initialData: PageData }) => {
   const postImageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const postViewContainerRef = useRef<HTMLDivElement>(null);
-  const touchGestureRef = useRef<'none' | 'pan' | 'pinch'>('none');
+  const mainContentRef = useRef<HTMLDivElement>(null);
+  const touchGestureRef = useRef<'none' | 'pan' | 'pinch' | 'swipe'>('none');
+  const swipeHandledRef = useRef(false);
 
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -163,40 +167,53 @@ const App = ({ initialData }: { initialData: PageData }) => {
     (window as any).__r34proDismissLoadingShell?.();
   }, []);
 
-  const resetLightboxUiTimer = useCallback(() => {
+  const startLightboxUiAutoHide = useCallback(() => {
     if (!isAndroidApp) return;
     if (lightboxUiTimer.current) clearTimeout(lightboxUiTimer.current);
-    setLightboxUiVisible(true);
     lightboxUiTimer.current = setTimeout(() => {
       setLightboxUiVisible(false);
     }, 4000);
   }, [isAndroidApp]);
+
+  const resetLightboxUiTimer = useCallback(() => {
+    if (!isAndroidApp) return;
+    setLightboxUiVisible(true);
+    startLightboxUiAutoHide();
+  }, [isAndroidApp, startLightboxUiAutoHide]);
 
   const toggleAndroidLightboxUi = useCallback(() => {
     if (!isAndroidApp) return;
     setLightboxUiVisible((visible) => {
       const next = !visible;
       if (next) {
-        if (lightboxUiTimer.current) clearTimeout(lightboxUiTimer.current);
-        lightboxUiTimer.current = setTimeout(() => setLightboxUiVisible(false), 4000);
+        startLightboxUiAutoHide();
       } else if (lightboxUiTimer.current) {
         clearTimeout(lightboxUiTimer.current);
       }
       return next;
     });
-  }, [isAndroidApp]);
+  }, [isAndroidApp, startLightboxUiAutoHide]);
 
   useEffect(() => {
     if (!isAndroidApp || !lightboxOpen) {
       if (lightboxUiTimer.current) clearTimeout(lightboxUiTimer.current);
-      setLightboxUiVisible(true);
+      if (!lightboxOpen) setLightboxUiVisible(true);
       return;
     }
-    resetLightboxUiTimer();
+
+    const uiHiddenFromNav = new URL(window.location.href).searchParams.get('r34_ui') === '0';
+    if (uiHiddenFromNav) {
+      setLightboxUiVisible(false);
+      if (lightboxUiTimer.current) clearTimeout(lightboxUiTimer.current);
+      return;
+    }
+
+    setLightboxUiVisible(true);
+    startLightboxUiAutoHide();
     return () => {
       if (lightboxUiTimer.current) clearTimeout(lightboxUiTimer.current);
     };
-  }, [isAndroidApp, lightboxOpen, resetLightboxUiTimer]);
+  }, [isAndroidApp, lightboxOpen, startLightboxUiAutoHide]);
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 900px)');
@@ -229,15 +246,25 @@ const App = ({ initialData }: { initialData: PageData }) => {
     const normalized = tag.replace(/\s+/g, '_').trim();
     if (!normalized) return;
     setSearchValue((prev) => {
-      const parts = prev.trim() ? prev.trim().split(/\s+/) : [];
+      const parts = prev.trim() ? prev.trim().split(/\s+/).filter(Boolean) : [];
       if (parts.includes(normalized)) {
-        return prev.endsWith(' ') ? prev : `${prev.trim()} `;
+        const next = parts.filter((p) => p !== normalized);
+        return next.length ? `${next.join(' ')} ` : '';
       }
       return `${prev.trim() ? `${prev.trim()} ` : ''}${normalized} `;
     });
     setSidebarOpen(true);
     setShowSuggestions(false);
   }, []);
+
+  const selectedSearchTags = searchValue.trim()
+    ? searchValue.trim().split(/\s+/).filter(Boolean)
+    : [];
+
+  const isTagSelected = useCallback(
+    (tag: string) => selectedSearchTags.includes(tag.replace(/\s+/g, '_').trim()),
+    [selectedSearchTags]
+  );
 
   const postId = data.type === 'post' ? data.id : null;
 
@@ -326,20 +353,27 @@ const App = ({ initialData }: { initialData: PageData }) => {
    * Navigate directly to prev/next post using URL.
    * We append our own "Reframer Tags" to the URL to persist UI state.
    */
+  const appendR34NavParams = useCallback((target: URL) => {
+    if (lightboxOpen) target.searchParams.set('r34_lb', '1');
+    if (isPlaying) target.searchParams.set('r34_ss', '1');
+    if (slideshowInterval !== 5) target.searchParams.set('r34_si', slideshowInterval.toString());
+    if (gridSize !== 4) target.searchParams.set('r34_gs', gridSize.toString());
+    if (bulkCount !== 10) target.searchParams.set('r34_bc', bulkCount.toString());
+    if (isAndroidApp && lightboxOpen && !lightboxUiVisible) {
+      target.searchParams.set('r34_ui', '0');
+    }
+  }, [lightboxOpen, isPlaying, slideshowInterval, gridSize, bulkCount, isAndroidApp, lightboxUiVisible]);
+
   const navigateToPost = useCallback((direction: 'prev' | 'next') => {
     if (data.type !== 'post') return;
     let url = direction === 'prev' ? data.prevUrl : data.nextUrl;
     if (url && url !== '#') {
       const target = new URL(url, RULE34_ORIGIN);
-      if (lightboxOpen) target.searchParams.set('r34_lb', '1');
-      if (isPlaying) target.searchParams.set('r34_ss', '1');
-      if (slideshowInterval !== 5) target.searchParams.set('r34_si', slideshowInterval.toString());
-      if (gridSize !== 4) target.searchParams.set('r34_gs', gridSize.toString());
-      if (bulkCount !== 10) target.searchParams.set('r34_bc', bulkCount.toString());
+      appendR34NavParams(target);
       if (isMobile) setSidebarOpen(false);
       window.location.href = target.href;
     }
-  }, [data, lightboxOpen, isPlaying, slideshowInterval, gridSize, bulkCount, isMobile]);
+  }, [data, appendR34NavParams, isMobile]);
 
   const fetchNeighbors = useCallback(async (postId: string, tags: string) => {
     try {
@@ -443,14 +477,13 @@ const App = ({ initialData }: { initialData: PageData }) => {
   useEffect(() => {
     if (!isMobile || data.type !== 'post') return;
 
-    const container = lightboxOpen ? containerRef.current : postViewContainerRef.current;
+    const container = lightboxOpen ? containerRef.current : mainContentRef.current;
     if (!container) return;
 
     let startX = 0;
     let startY = 0;
     let initialDistance = 0;
     let initialScale = 1;
-    let moved = false;
 
     const getDistance = (touches: TouchList) => {
       if (touches.length < 2) return 0;
@@ -460,11 +493,11 @@ const App = ({ initialData }: { initialData: PageData }) => {
     };
 
     const onTouchStart = (event: TouchEvent) => {
+      swipeHandledRef.current = false;
       if (event.touches.length === 2) {
         touchGestureRef.current = 'pinch';
         initialDistance = getDistance(event.touches);
         initialScale = scale;
-        moved = true;
         if (isAndroidApp && lightboxOpen) resetLightboxUiTimer();
         return;
       }
@@ -472,7 +505,6 @@ const App = ({ initialData }: { initialData: PageData }) => {
       if (event.touches.length === 1) {
         startX = event.touches[0].clientX;
         startY = event.touches[0].clientY;
-        moved = false;
         if (scale > 1) {
           touchGestureRef.current = 'pan';
           dragStart.current = { x: startX - position.x, y: startY - position.y };
@@ -486,7 +518,6 @@ const App = ({ initialData }: { initialData: PageData }) => {
     const onTouchMove = (event: TouchEvent) => {
       if (touchGestureRef.current === 'pinch' && event.touches.length === 2 && initialDistance) {
         event.preventDefault();
-        moved = true;
         const distance = getDistance(event.touches);
         const nextScale = Math.min(Math.max(1, initialScale * (distance / initialDistance)), 8);
         setScale(nextScale);
@@ -496,13 +527,19 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
       if (touchGestureRef.current === 'pan' && event.touches.length === 1 && scale > 1) {
         event.preventDefault();
-        moved = true;
         setPosition({
           x: event.touches[0].clientX - dragStart.current.x,
           y: event.touches[0].clientY - dragStart.current.y,
         });
-      } else if (event.touches[0] && (Math.abs(event.touches[0].clientX - startX) > 8 || Math.abs(event.touches[0].clientY - startY) > 8)) {
-        moved = true;
+        return;
+      }
+
+      if (event.touches.length === 1 && scale <= 1 && touchGestureRef.current !== 'pinch') {
+        const dx = event.touches[0].clientX - startX;
+        const dy = event.touches[0].clientY - startY;
+        if (Math.abs(dx) > 16 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+          touchGestureRef.current = 'swipe';
+        }
       }
     };
 
@@ -523,18 +560,22 @@ const App = ({ initialData }: { initialData: PageData }) => {
         return;
       }
 
-      if (moved || scale > 1) {
+      if (scale > 1) {
         touchGestureRef.current = 'none';
         return;
       }
 
       if (lightboxOpen && deltaY > 90 && deltaY > Math.abs(deltaX) * 1.3) {
         setLightboxOpen(false);
+        touchGestureRef.current = 'none';
         return;
       }
 
-      if (Math.abs(deltaX) >= 72 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
-        if (isAndroidApp && lightboxOpen) resetLightboxUiTimer();
+      if (
+        touchGestureRef.current === 'swipe' ||
+        (Math.abs(deltaX) >= 56 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2)
+      ) {
+        swipeHandledRef.current = true;
         if (deltaX > 0) navigateToPost('prev');
         else navigateToPost('next');
       }
@@ -631,7 +672,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
   /**
    * UI STATE Persistence
-   * Handled by appending 'r34_lb' and 'r34_ss' to outgoing navigation URLs.
+   * Handled by appending r34_lb, r34_ss, r34_ui, etc. to outgoing navigation URLs.
    */
 
   // Global Keyboard Listener (State only - Navigation is handled by site keys)
@@ -983,7 +1024,11 @@ const App = ({ initialData }: { initialData: PageData }) => {
                        key={`${cat}-${t}-${ti}`}
                        type="button"
                        onClick={() => appendTagToSearch(t)}
-                       className={`px-5 py-2.5 rounded-2xl text-sm transition-all cursor-pointer border hover:-translate-y-0.5 hover:scale-105 active:scale-95 inline-block font-medium text-left ${getTagColor(cat)}`}
+                       className={`px-5 py-2.5 rounded-2xl text-sm transition-all cursor-pointer border hover:-translate-y-0.5 active:scale-95 inline-block font-medium text-left ${
+                         isTagSelected(t)
+                           ? 'ring-2 ring-theme-primary border-theme-primary bg-theme-primary/25 text-white scale-105 shadow-[0_0_20px_var(--theme-glow)]'
+                           : `${getTagColor(cat)} hover:scale-105`
+                       }`}
                      >
                        {t.replace(/_/g, ' ')}
                      </button>
@@ -1236,7 +1281,10 @@ const App = ({ initialData }: { initialData: PageData }) => {
       )}
 
       {/* Main Content Area */}
-      <div className={`flex-1 relative flex flex-col items-center justify-center overflow-hidden bg-zinc-950/50 mobile-main ${isMobile ? `pt-[calc(4.25rem+env(safe-area-inset-top))] ${data.type === 'post' && !lightboxOpen ? 'pb-[calc(5rem+env(safe-area-inset-bottom))]' : 'pb-2'} px-2` : 'p-4 md:p-8'}`}>
+      <div
+        ref={mainContentRef}
+        className={`flex-1 relative flex flex-col items-center justify-center overflow-hidden bg-zinc-950/50 mobile-main ${isMobile ? `pt-[calc(4.25rem+env(safe-area-inset-top))] ${data.type === 'post' && !lightboxOpen ? 'pb-[calc(5rem+env(safe-area-inset-bottom))]' : 'pb-2'} px-2` : 'p-4 md:p-8'}`}
+      >
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-700 via-zinc-950 to-zinc-950 pointer-events-none"></div>
         {loading && (
            <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 z-20 backdrop-blur-md transition-all duration-300">
@@ -1430,10 +1478,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
                          onClick={() => { 
                            if (p.url && p.url !== '#') {
                              const target = new URL(p.url, RULE34_ORIGIN);
-                             if (isPlaying) target.searchParams.set('r34_ss', '1');
-                             if (slideshowInterval !== 5) target.searchParams.set('r34_si', slideshowInterval.toString());
-                             if (gridSize !== 4) target.searchParams.set('r34_gs', gridSize.toString());
-                             if (bulkCount !== 10) target.searchParams.set('r34_bc', bulkCount.toString());
+                             appendR34NavParams(target);
                              window.location.href = target.href;
                            }
                          }}
@@ -1571,7 +1616,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
               </div>
             )}
             
-            <div className={`glass-panel bg-black/60 px-6 py-4 rounded-2xl flex items-center gap-8 shadow-[0_0_30px_rgba(0,0,0,0.8)] border border-white/10 ${isPlaying ? '' : 'animate-in fade-in slide-in-from-bottom-5 duration-500'}`}>
+            <div className={`glass-panel bg-black/60 px-6 py-4 rounded-2xl flex items-center gap-8 shadow-[0_0_30px_rgba(0,0,0,0.8)] border border-white/10 ${isPlaying || (isAndroidApp && !lightboxUiVisible) ? '' : 'animate-in fade-in slide-in-from-bottom-5 duration-500'}`}>
                 <BoutiqueSelect 
                   value={slideshowInterval}
                   onChange={setSlideshowInterval}
