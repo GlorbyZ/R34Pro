@@ -20,7 +20,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewAssetLoader
-import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
@@ -30,30 +29,14 @@ class MainActivity : AppCompatActivity() {
     private var pendingShowPinOnResume = false
     private var immersiveRequested = false
 
-    private val pauseMediaJs = """
+    private val injectStylesheetJs = """
         (function() {
-          if (window.__r34proPauseAllMedia) {
-            window.__r34proPauseAllMedia();
-            return;
-          }
-          document.querySelectorAll('video,audio').forEach(function(el) {
-            try {
-              el.pause();
-              el.muted = true;
-              el.autoplay = false;
-              el.removeAttribute('autoplay');
-            } catch (e) {}
-          });
-        })();
-    """.trimIndent()
-
-    private val showLoadingShellJs = """
-        (function() {
-          if (window.__r34proShowLoadingShell) {
-            window.__r34proShowLoadingShell();
-            return;
-          }
-          document.documentElement.classList.add('r34pro-loading');
+          if (document.getElementById('r34pro-content-css-link')) return;
+          var link = document.createElement('link');
+          link.id = 'r34pro-content-css-link';
+          link.rel = 'stylesheet';
+          link.href = 'https://appassets.androidplatform.net/assets/extension/content-scripts/content.css';
+          document.head.appendChild(link);
         })();
     """.trimIndent()
 
@@ -93,6 +76,7 @@ class MainActivity : AppCompatActivity() {
             allowFileAccess = true
             allowContentAccess = true
             textZoom = 100
+            cacheMode = WebSettings.LOAD_DEFAULT
         }
 
         webView.addJavascriptInterface(R34ProBridge(this), "R34ProAndroid")
@@ -115,19 +99,11 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val url = request.url.toString()
-                if (isRule34Url(url)) {
-                    pausePageMedia(view)
-                    showLoadingShell(view)
-                    return false
-                }
-                return true
+                return !isRule34Url(request.url.toString())
             }
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 extensionInjectedForUrl = null
-                pausePageMedia(view)
-                showLoadingShell(view)
                 injectEarlyBootstrap(view)
                 super.onPageStarted(view, url, favicon)
             }
@@ -179,7 +155,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         webView.onPause()
-        pausePageMedia(webView)
         super.onPause()
         sessionUnlocked = false
         pendingShowPinOnResume = true
@@ -229,8 +204,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun injectEarlyBootstrap(view: WebView) {
-        injectScript(view, "r34pro/loading-shell.js")
         injectScript(view, "r34pro/viewport-setup.js")
+        injectScript(view, "r34pro/loading-shell.js")
     }
 
     private fun injectExtension(view: WebView) {
@@ -241,13 +216,10 @@ class MainActivity : AppCompatActivity() {
         }
         extensionInjectedForUrl = currentUrl
 
+        view.evaluateJavascript(injectStylesheetJs, null)
         injectScript(view, "r34pro/chrome-polyfill.js") {
-            injectScript(view, "extension/background.js") {
-                injectAssetCss(view, "extension/content-scripts/content.css") {
-                    injectScript(view, "extension/content-scripts/content.js") {
-                        verifyInjection(view)
-                    }
-                }
+            injectScript(view, "extension/content-scripts/content.js") {
+                verifyInjection(view)
             }
         }
     }
@@ -261,25 +233,6 @@ class MainActivity : AppCompatActivity() {
         } catch (error: Exception) {
             Log.e(TAG, "Failed to inject script: $assetPath", error)
             onDone?.invoke()
-        }
-    }
-
-    private fun injectAssetCss(view: WebView, assetPath: String, onDone: () -> Unit) {
-        try {
-            val css = readAsset(assetPath)
-            val js = """
-                (function() {
-                  if (document.getElementById('r34pro-content-css')) return;
-                  var style = document.createElement('style');
-                  style.id = 'r34pro-content-css';
-                  style.textContent = ${JSONObject.quote(css)};
-                  document.head.appendChild(style);
-                })();
-            """.trimIndent()
-            view.evaluateJavascript(js) { onDone() }
-        } catch (error: Exception) {
-            Log.e(TAG, "Failed to inject css: $assetPath", error)
-            onDone()
         }
     }
 
@@ -298,7 +251,7 @@ class MainActivity : AppCompatActivity() {
         ) { result ->
             Log.d(TAG, "Injection check: $result")
             if (result == null || result.contains("\"hasRoot\":false")) {
-                view.postDelayed({ reinjectIfNeeded(view) }, 500)
+                view.postDelayed({ reinjectIfNeeded(view) }, 150)
             }
         }
     }
@@ -311,18 +264,10 @@ class MainActivity : AppCompatActivity() {
                 Log.w(TAG, "R34 Pro UI missing, retrying injection")
                 extensionInjectedForUrl = null
                 injectExtension(view)
+            } else {
+                dismissLoadingShell(view)
             }
         }
-    }
-
-    private fun pausePageMedia(view: WebView) {
-        view.evaluateJavascript(pauseMediaJs, null)
-    }
-
-    private fun showLoadingShell(view: WebView) {
-        pausePageMedia(view)
-        view.evaluateJavascript(showLoadingShellJs, null)
-        injectScript(view, "r34pro/loading-shell.js")
     }
 
     private fun dismissLoadingShell(view: WebView) {
@@ -344,7 +289,8 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "R34Pro"
-        private const val HOME_URL = "https://rule34.xxx/index.php?page=post&s=list&tags=all"
+        private const val HOME_URL =
+            "https://rule34.xxx/index.php?page=post&s=list&tags=all&r34_browse=1"
         private const val ASSET_DOMAIN = "appassets.androidplatform.net"
 
         @Volatile

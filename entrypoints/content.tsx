@@ -622,12 +622,15 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
   useEffect(() => {
     if (initialData.type === 'account') return;
-    refreshAccountSession();
     chrome.storage.local.get('r34proSession').then((stored) => {
       if (stored.r34proSession?.isLoggedIn) {
         setAccountSession(stored.r34proSession as AccountSession);
       }
     });
+    const refreshTimer = window.setTimeout(() => {
+      refreshAccountSession();
+    }, 3000);
+    return () => window.clearTimeout(refreshTimer);
   }, [initialData.type, refreshAccountSession]);
 
   const showProfileNotice = useCallback((message: string) => {
@@ -1005,8 +1008,6 @@ const App = ({ initialData }: { initialData: PageData }) => {
       appendR34NavParams(target);
       if (isMobile) setSidebarOpen(false);
       videoRef.current?.pause();
-      pauseAllPageMedia();
-      (window as any).__r34proShowLoadingShell?.();
       window.location.href = target.href;
     }
   }, [data, appendR34NavParams, isMobile]);
@@ -2517,18 +2518,19 @@ export default defineContentScript({
   },
   main() {
     const data = parseRule34Page(document, new URLSearchParams(window.location.search));
-    if (!data) return;
-
-    // Keep the loading shell visible until React mounts; dismiss happens from App/verifyInjection.
+    if (!data) {
+      (window as any).__r34proDismissLoadingShell?.();
+      return;
+    }
 
     const rootContainer = document.createElement('div');
     rootContainer.id = 'reframer-root';
     rootContainer.className = 'void-navigator-root';
     document.body.appendChild(rootContainer);
-    
-    setTimeout(() => {
-        const root = createRoot(rootContainer);
-        root.render(<App initialData={data} />);
-    }, 0);
+
+    (window as any).__r34proDismissLoadingShell?.();
+
+    const root = createRoot(rootContainer);
+    root.render(<App initialData={data} />);
   }
 });
