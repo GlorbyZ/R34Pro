@@ -1476,17 +1476,26 @@ const App = ({ initialData }: { initialData: PageData }) => {
                     : 'R34 Pro'}
             </div>
           </div>
+          {data.type === 'post' && (
+            <button
+              type="button"
+              onClick={() => handleToggleFavorite(data.id)}
+              disabled={favoriteBusy}
+              className="mobile-touch-btn w-11 h-11 rounded-xl bg-zinc-900 border border-white/10 text-white flex items-center justify-center active:scale-95 transition-all disabled:opacity-50"
+              title="Add to favorites"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path></svg>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
-              if (accountSession.isLoggedIn && accountSession.favoritesUrl) {
-                window.location.href = accountSession.favoritesUrl;
-              } else {
-                window.location.href = accountHomeUrl();
-              }
+              window.location.href = accountSession.isLoggedIn && accountSession.profileUrl
+                ? accountSession.profileUrl
+                : accountHomeUrl();
             }}
             className="mobile-touch-btn w-11 h-11 rounded-xl bg-zinc-900 border border-white/10 text-white flex items-center justify-center active:scale-95 transition-all"
-            title={accountSession.isLoggedIn ? 'My favorites' : 'Account'}
+            title={accountSession.isLoggedIn ? 'My profile' : 'Account'}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
           </button>
@@ -1560,7 +1569,9 @@ const App = ({ initialData }: { initialData: PageData }) => {
         {data.type === 'post' && !lightboxOpen && isMobile && (
           <div ref={postGestureRef} className="absolute inset-0 z-[8] mobile-gesture-layer" aria-hidden />
         )}
-        <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-700 via-zinc-950 to-zinc-950 pointer-events-none"></div>
+        {!(data.type === 'post' && !lightboxOpen) && (
+          <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-700 via-zinc-950 to-zinc-950 pointer-events-none"></div>
+        )}
         {loading && (
            <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 z-20 backdrop-blur-md transition-all duration-300">
               <div className="w-12 h-12 border-[4px] border-theme-primary border-t-transparent rounded-full animate-spin glow-theme"></div>
@@ -1687,7 +1698,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
             
             <div 
               ref={postViewContainerRef}
-              className={`relative w-full h-full rounded-2xl overflow-hidden glass-panel flex items-center justify-center group shadow-2xl transition-all duration-300 bg-zinc-900/50 ${scale > 1 ? 'cursor-grab' : 'cursor-zoom-in'}`}
+              className={`relative w-full h-full rounded-2xl overflow-hidden flex items-center justify-center group transition-all duration-300 ${scale > 1 ? 'cursor-grab' : 'cursor-zoom-in'}`}
             >
                {data.mediaType === 'video' ? (
                  <>
@@ -1725,14 +1736,6 @@ const App = ({ initialData }: { initialData: PageData }) => {
                    alt="Post Image"
                    draggable={false}
                  />
-               )}
-               {scale <= 1 && (
-               <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none flex items-end justify-center pb-8 ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity duration-300`}>
-                 <span className="text-white backdrop-blur-md px-6 py-2.5 rounded-full bg-black/60 font-medium text-sm border border-white/10 flex items-center gap-2 shadow-xl translate-y-0">
-                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-                   {isMobile ? 'Tap for fullscreen · Swipe for next · Pinch to zoom' : 'Enter Fullscreen Lightbox'}
-                 </span>
-               </div>
                )}
             </div>
           </>
