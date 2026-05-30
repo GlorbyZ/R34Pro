@@ -2517,24 +2517,72 @@ export default defineContentScript({
     "128": "logo.webp"
   },
   main() {
-    const data = parseRule34Page(document, new URLSearchParams(window.location.search));
-    if (!data) {
-      (window as any).__r34proDismissLoadingShell?.();
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', bootR34Pro, { once: true });
       return;
     }
+    bootR34Pro();
+  }
+});
 
-    const rootContainer = document.createElement('div');
+function mountR34ProUi(): boolean {
+  if (document.getElementById('reframer-root')?.childElementCount) return true;
+
+  const data = parseRule34Page(document, new URLSearchParams(window.location.search));
+  if (!data) return false;
+
+  let rootContainer = document.getElementById('reframer-root') as HTMLDivElement | null;
+  if (!rootContainer) {
+    rootContainer = document.createElement('div');
     rootContainer.id = 'reframer-root';
     rootContainer.className = 'void-navigator-root';
     document.body.appendChild(rootContainer);
-
-    (window as any).__r34proDismissLoadingShell?.();
-
-    // Defer one tick so Android injection isn't torn down mid-parse by WXT invalidation.
-    setTimeout(() => {
-      if (document.getElementById('reframer-root')?.childElementCount) return;
-      const root = createRoot(rootContainer);
-      root.render(<App initialData={data} />);
-    }, 0);
   }
-});
+
+  (window as any).__r34proDismissLoadingShell?.();
+
+  setTimeout(() => {
+    if (document.getElementById('reframer-root')?.childElementCount) return;
+    const root = createRoot(rootContainer!);
+    root.render(<App initialData={data} />);
+  }, 0);
+
+  return true;
+}
+
+function bootR34Pro() {
+  if ((window as any).__R34PRO_UI_BOOTED) return;
+
+  const finishBoot = () => {
+    (window as any).__R34PRO_UI_BOOTED = true;
+    observer?.disconnect();
+  };
+
+  if (mountR34ProUi()) {
+    finishBoot();
+    return;
+  }
+
+  let observer: MutationObserver | null = null;
+  const tryBoot = () => {
+    if (mountR34ProUi()) {
+      finishBoot();
+      return true;
+    }
+    return false;
+  };
+
+  if (document.body) {
+    observer = new MutationObserver(() => {
+      tryBoot();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  window.setTimeout(() => {
+    if (!tryBoot()) {
+      (window as any).__r34proDismissLoadingShell?.();
+    }
+    observer?.disconnect();
+  }, 10000);
+}

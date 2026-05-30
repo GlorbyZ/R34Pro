@@ -27,6 +27,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pinOverlay: View
     private lateinit var pinLock: PinLockController
     private var extensionInjectedForUrl: String? = null
+    private var injectAttempts = 0
     private var pendingShowPinOnResume = false
     private var immersiveRequested = false
 
@@ -102,7 +103,7 @@ class MainActivity : AppCompatActivity() {
                 super.onPageFinished(view, url)
                 injectEarlyBootstrap(view)
                 if (isRule34Url(url)) {
-                    injectExtension(view)
+                    view.postDelayed({ injectExtension(view) }, 150)
                 } else {
                     dismissLoadingShell(view)
                 }
@@ -201,19 +202,73 @@ class MainActivity : AppCompatActivity() {
     private fun injectExtension(view: WebView) {
         val currentUrl = view.url ?: return
         if (extensionInjectedForUrl == currentUrl) {
-            verifyInjection(view)
+            pollForUiMount(view, 0)
             return
         }
         extensionInjectedForUrl = currentUrl
+        injectAttempts = 0
 
         injectScript(view, "r34pro/chrome-polyfill.js") {
             injectScript(view, "extension/background.js") {
                 injectAssetCss(view, "extension/content-scripts/content.css") {
-                    injectScript(view, "extension/content-scripts/content.js") {
-                        view.postDelayed({ verifyInjection(view) }, 350)
+                    injectContentBundle(view) {
+                        pollForUiMount(view, 0)
                     }
                 }
             }
+        }
+    }
+
+    private fun injectContentBundle(view: WebView, onDone: () -> Unit) {
+        injectScript(view, "r34pro/load-content.js") {
+            view.postDelayed({
+                view.evaluateJavascript(
+                    "(function(){ return !!window.__R34PRO_CONTENT_SCRIPT_TAG_FAILED; })();"
+                ) { failed ->
+                    if (failed == "true") {
+                        Log.w(TAG, "Script tag load failed, falling back to direct injection")
+                        injectLargeScriptEval(view, "extension/content-scripts/content.js", onDone)
+                    } else {
+                        onDone()
+                    }
+                }
+            }, 400)
+        }
+    }
+
+    private fun injectLargeScriptEval(
+        view: WebView,
+        assetPath: String,
+        onDone: (() -> Unit)? = null
+    ) {
+        try {
+            val source = readAsset(assetPath)
+            if (source.length <= 120_000) {
+                injectScript(view, assetPath, onDone)
+                return
+            }
+
+            val chunks = source.chunked(28_000)
+            fun injectChunk(index: Int) {
+                if (index >= chunks.size) {
+                    onDone?.invoke()
+                    return
+                }
+                val chunk = JSONObject.quote(chunks[index])
+                val js = when (index) {
+                    0 -> "window.__r34pro_eval_buf = $chunk;"
+                    chunks.lastIndex -> """
+                        window.__r34pro_eval_buf += $chunk;
+                        try { (0, eval)(window.__r34pro_eval_buf); } finally { delete window.__r34pro_eval_buf; }
+                    """.trimIndent()
+                    else -> "window.__r34pro_eval_buf += $chunk;"
+                }
+                view.evaluateJavascript(js) { injectChunk(index + 1) }
+            }
+            injectChunk(0)
+        } catch (error: Exception) {
+            Log.e(TAG, "Failed chunked script injection: $assetPath", error)
+            onDone?.invoke()
         }
     }
 
@@ -248,7 +303,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun verifyInjection(view: WebView) {
+    private fun pollForUiMount(view: WebView, attempt: Int) {
         view.evaluateJavascript(
             """
             (function() {
@@ -257,28 +312,37 @@ class MainActivity : AppCompatActivity() {
               if (hasRoot || hasVoid) {
                 window.__r34proDismissLoadingShell && window.__r34proDismissLoadingShell();
               }
-              return JSON.stringify({ hasRoot: hasRoot, hasVoid: hasVoid, href: location.href });
+              return JSON.stringify({
+                hasRoot: hasRoot,
+                hasVoid: hasVoid,
+                loading: !!window.__R34PRO_CONTENT_LOADING,
+                loaded: !!window.__R34PRO_CONTENT_LOADED,
+                href: location.href
+              });
             })();
             """.trimIndent()
         ) { result ->
-            Log.d(TAG, "Injection check: $result")
-            if (result == null || result.contains("\"hasRoot\":false")) {
-                view.postDelayed({ reinjectIfNeeded(view) }, 500)
-            }
-        }
-    }
-
-    private fun reinjectIfNeeded(view: WebView) {
-        view.evaluateJavascript(
-            "(function(){ return !!document.getElementById('reframer-root'); })();"
-        ) { result ->
-            if (result == "false") {
-                Log.w(TAG, "R34 Pro UI missing, retrying injection")
-                extensionInjectedForUrl = null
-                injectExtension(view)
-            } else {
+            Log.d(TAG, "UI poll ($attempt): $result")
+            if (result != null && result.contains("\"hasRoot\":true")) {
+                injectAttempts = 0
                 dismissLoadingShell(view)
+                return@evaluateJavascript
             }
+
+            if (attempt >= 30) {
+                if (injectAttempts < 3) {
+                    injectAttempts++
+                    Log.w(TAG, "R34 Pro UI missing after polling, reinject attempt $injectAttempts")
+                    extensionInjectedForUrl = null
+                    view.postDelayed({ injectExtension(view) }, 800)
+                } else {
+                    Log.e(TAG, "R34 Pro UI failed to mount after $injectAttempts reinject attempts")
+                    dismissLoadingShell(view)
+                }
+                return@evaluateJavascript
+            }
+
+            view.postDelayed({ pollForUiMount(view, attempt + 1) }, 400)
         }
     }
 
