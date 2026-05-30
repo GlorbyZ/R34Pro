@@ -31,6 +31,8 @@ import {
  *    to survive reloads and maintain seamless user experience.
  * 3. Atomic Parsing: The site is parsed once per load into a PageData object.
  */
+const VIDEO_SLIDESHOW_RATIO = 0.65;
+
 const BoutiqueSelect = ({ value, onChange, options, title }: { 
   value: number, 
   onChange: (v: number) => void, 
@@ -99,6 +101,8 @@ const App = ({ initialData }: { initialData: PageData }) => {
     return Number(currentParams.get('r34_si')) || 5;
   });
   const [slideTick, setSlideTick] = useState(0);
+  const [slideMaxTicks, setSlideMaxTicks] = useState(() => (Number(currentParams.get('r34_si')) || 5) * 10);
+  const [mediaReady, setMediaReady] = useState(true);
   const [rateLimited, setRateLimited] = useState(false);
   
   // Bulk Download State (Persist &r34_bc=X)
@@ -396,7 +400,9 @@ const App = ({ initialData }: { initialData: PageData }) => {
     setScale(1);
     setPosition({ x: 0, y: 0 });
     setVideoMuted(true);
-  }, [postId, lightboxOpen]);
+    setMediaReady(data.type !== 'post' || data.mediaType !== 'video');
+    setSlideTick(0);
+  }, [postId, lightboxOpen, data.type, data.type === 'post' ? data.mediaType : null]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -408,7 +414,8 @@ const App = ({ initialData }: { initialData: PageData }) => {
       const newScale = Math.min(Math.max(1, scale + delta), 10);
       
       if (newScale !== scale) {
-        const rect = imageRef.current?.getBoundingClientRect();
+        const mediaEl = imageRef.current ?? lightboxVideoRef.current ?? videoRef.current;
+        const rect = mediaEl?.getBoundingClientRect();
         if (rect) {
           const mouseX = e.clientX - rect.left;
           const mouseY = e.clientY - rect.top;
@@ -426,6 +433,41 @@ const App = ({ initialData }: { initialData: PageData }) => {
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
   }, [lightboxOpen, scale]);
+
+  useEffect(() => {
+    if (data.type !== 'post' || data.mediaType !== 'video') {
+      setSlideMaxTicks(slideshowInterval * 10);
+      return;
+    }
+
+    const video = lightboxOpen ? lightboxVideoRef.current : videoRef.current;
+    if (!video) {
+      setSlideMaxTicks(slideshowInterval * 10);
+      return;
+    }
+
+    const syncDuration = () => {
+      const duration = video.duration;
+      if (Number.isFinite(duration) && duration > 0) {
+        setSlideMaxTicks(Math.max(20, Math.round(duration * VIDEO_SLIDESHOW_RATIO * 10)));
+      } else {
+        setSlideMaxTicks(slideshowInterval * 10);
+      }
+    };
+
+    if (video.readyState >= 1) syncDuration();
+    else video.addEventListener('loadedmetadata', syncDuration, { once: true });
+
+    return () => video.removeEventListener('loadedmetadata', syncDuration);
+  }, [postId, slideshowInterval, lightboxOpen, data.type, data.type === 'post' ? data.mediaType : null]);
+
+  useEffect(() => {
+    if (!isPlaying || data.type !== 'post' || data.mediaType !== 'video') return;
+    const video = lightboxOpen ? lightboxVideoRef.current : videoRef.current;
+    if (!video) return;
+    video.currentTime = 0;
+    void video.play().catch(() => {});
+  }, [isPlaying, postId, lightboxOpen, data.type, data.type === 'post' ? data.mediaType : null]);
 
   useEffect(() => {
     return () => {
@@ -608,7 +650,10 @@ const App = ({ initialData }: { initialData: PageData }) => {
   useEffect(() => {
     if (!isMobile || data.type !== 'post') return;
 
-    const container = lightboxOpen ? lightboxGestureRef.current : postGestureRef.current;
+    const postMediaType = data.mediaType;
+    const container = lightboxOpen
+      ? (postMediaType === 'video' ? containerRef.current : lightboxGestureRef.current)
+      : postGestureRef.current;
     if (!container) return;
 
     let startX = 0;
@@ -746,7 +791,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
       container.removeEventListener('touchmove', onTouchMove);
       container.removeEventListener('touchend', onTouchEnd);
     };
-  }, [isMobile, data.type, lightboxOpen, postId]);
+  }, [isMobile, data.type, data.type === 'post' ? data.mediaType : null, lightboxOpen, postId]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -764,14 +809,9 @@ const App = ({ initialData }: { initialData: PageData }) => {
       setSlideTick(0);
       return;
     }
-    if (loading) return;
-
     const timer = setInterval(() => {
       setSlideTick(prev => {
-        const maxTicks = slideshowInterval * 10;
-        if (prev >= maxTicks) {
-           // We use the latest navigateToPost which may have been updated
-           // by the fetchNeighbors async effect.
+        if (prev >= slideMaxTicks) {
            navigateToPost('next');
            return 0;
         }
@@ -780,7 +820,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
     }, 100);
 
     return () => clearInterval(timer);
-  }, [isPlaying, slideshowInterval, loading, navigateToPost]);
+  }, [isPlaying, slideMaxTicks, navigateToPost]);
 
   /**
    * BACKGROUND QUEUE SYNC
@@ -836,9 +876,9 @@ const App = ({ initialData }: { initialData: PageData }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const downloadPost = (url: string, id: string, tags: string) => {
-     const extMatch = url.match(/\.(jpg|jpeg|png|gif|mp4|webm)/i);
-     const ext = extMatch ? extMatch[0] : '.jpg';
+  const downloadPost = (url: string, id: string, tags: string, mediaType?: 'image' | 'video') => {
+     const extMatch = url.match(/\.(jpg|jpeg|png|gif|webp|mp4|webm|mov)/i);
+     const ext = extMatch ? extMatch[0] : mediaType === 'video' ? '.mp4' : '.jpg';
      const sanitize = (s: string) => s.replace(/[^a-z0-9_]/gi, '_').substring(0, 50);
      const filename = `R34_${sanitize(tags)}_${id}${ext}`;
      chrome.runtime.sendMessage({ type: 'DOWNLOAD', url, filename });
@@ -1218,7 +1258,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
                
                {isPlaying && (
                  <div className="h-1.5 w-full bg-zinc-900/50 rounded-full overflow-hidden border border-white/5 mt-2">
-                    <div className="h-full liquid-theme-bar" style={{ width: `${(slideTick / (slideshowInterval * 10)) * 100}%` }}></div>
+                    <div className="h-full liquid-theme-bar" style={{ width: `${(slideTick / slideMaxTicks) * 100}%` }}></div>
                  </div>
                )}
             </div>
@@ -1488,7 +1528,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
           </button>
           <button
             type="button"
-            onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags)}
+            onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags, data.mediaType)}
             className="mobile-touch-btn w-12 h-12 rounded-2xl bg-zinc-900 border border-white/10 text-white flex items-center justify-center active:scale-95 transition-all"
             title="Download"
           >
@@ -1639,7 +1679,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
              <div className={`absolute top-6 right-6 z-10 flex gap-2 ${isMobile ? 'hidden' : ''}`}>
                <button 
-                  onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags)}
+                  onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags, data.mediaType)}
                   className={`bg-black/60 hover:bg-theme-primary border border-white/10 hover:border-theme-bright text-white hover:text-black rounded-2xl backdrop-blur-3xl transition-all shadow-2xl group glow-theme cursor-pointer active:opacity-70 ${isMobile ? 'p-3' : 'p-4'}`}>
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="group-hover:-translate-y-0.5 transition-transform"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                </button>
@@ -1650,18 +1690,31 @@ const App = ({ initialData }: { initialData: PageData }) => {
               className={`relative w-full h-full rounded-2xl overflow-hidden glass-panel flex items-center justify-center group shadow-2xl transition-all duration-300 bg-zinc-900/50 ${scale > 1 ? 'cursor-grab' : 'cursor-zoom-in'}`}
             >
                {data.mediaType === 'video' ? (
+                 <>
+                   {data.imageUrl && !mediaReady && (
+                     <img
+                       src={data.imageUrl}
+                       alt=""
+                       className="absolute max-w-full max-h-full object-contain opacity-80"
+                       draggable={false}
+                     />
+                   )}
                  <video 
                    ref={videoRef}
                    key={data.highresUrl}
                    src={data.highresUrl}
+                   poster={data.imageUrl || undefined}
                    muted
                    autoPlay
                    loop
                    playsInline
-                   preload="metadata"
-                   className={`max-w-full max-h-full object-contain transition-transform duration-300 pointer-events-none ${loading ? 'opacity-0 scale-95' : 'opacity-100'} ${scale <= 1 ? 'group-hover:scale-[1.02]' : ''}`}
+                   preload="auto"
+                   onLoadedData={() => setMediaReady(true)}
+                   onCanPlay={() => setMediaReady(true)}
+                   className={`max-w-full max-h-full object-contain transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${scale <= 1 ? 'group-hover:scale-[1.02]' : ''}`}
                    style={scale > 1 ? { transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`, transformOrigin: 'center center' } : undefined}
                  />
+                 </>
                ) : (
                  <img 
                    ref={postImageRef}
@@ -1900,24 +1953,43 @@ const App = ({ initialData }: { initialData: PageData }) => {
             onMouseUp={() => setIsDragging(false)}
             onMouseLeave={() => setIsDragging(false)}
           >
-            {isMobile && (
+            {isMobile && data.mediaType !== 'video' && (
               <div ref={lightboxGestureRef} className="absolute inset-0 z-[12] mobile-gesture-layer" aria-hidden />
             )}
             {data.mediaType === 'video' ? (
+              <div
+                className={`relative z-10 ${isDragging ? 'duration-0' : 'duration-300'} transition-transform`}
+                style={{
+                  transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+                  transformOrigin: 'center center',
+                }}
+              >
+                {data.imageUrl && !mediaReady && (
+                  <img
+                    src={data.imageUrl}
+                    alt=""
+                    className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl opacity-80"
+                    draggable={false}
+                  />
+                )}
               <video 
                 ref={lightboxVideoRef}
                 key={data.highresUrl}
                 src={data.highresUrl}
-                controls={!isMobile}
+                poster={data.imageUrl || undefined}
+                controls
                 muted={videoMuted}
                 autoPlay
                 loop
                 playsInline
-                preload="metadata"
-                className={`max-w-full max-h-[85vh] shadow-2xl rounded-lg z-10 ${isMobile ? 'pointer-events-none' : ''}`}
+                preload="auto"
+                onLoadedData={() => setMediaReady(true)}
+                onCanPlay={() => setMediaReady(true)}
+                className="max-w-full max-h-[85vh] shadow-2xl rounded-lg"
                 style={{ maxHeight: '85vh' }}
-                onClick={(e) => !isMobile && e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
               />
+              </div>
             ) : (
               <img 
                 ref={imageRef}
@@ -1942,22 +2014,8 @@ const App = ({ initialData }: { initialData: PageData }) => {
           </div>
 
           <div className={`absolute top-6 right-6 z-10 flex gap-3 transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-            {data.mediaType === 'video' && isMobile && (
-              <button
-                type="button"
-                onClick={() => setVideoMuted((m) => !m)}
-                className="bg-black/60 hover:bg-theme-primary border border-white/10 hover:border-theme-bright text-white hover:text-black p-4 rounded-full backdrop-blur-3xl transition-all shadow-2xl cursor-pointer active:opacity-70"
-                title={videoMuted ? 'Unmute video' : 'Mute video'}
-              >
-                {videoMuted ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
-                )}
-              </button>
-            )}
             <button 
-                onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags)}
+                onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags, data.mediaType)}
                 className="bg-black/60 hover:bg-theme-primary border border-white/10 hover:border-theme-bright text-white hover:text-black p-4 rounded-full backdrop-blur-3xl transition-all shadow-2xl group glow-theme cursor-pointer active:opacity-70"
                 title="Download Archival Copy"
               >
@@ -1981,7 +2039,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
           >
             {isPlaying && (
               <div className="lightbox-progress-track">
-                 <div className="lightbox-progress-fill" style={{ width: `${(slideTick / (slideshowInterval * 10)) * 100}%` }}></div>
+                 <div className="lightbox-progress-fill" style={{ width: `${(slideTick / slideMaxTicks) * 100}%` }}></div>
               </div>
             )}
             
@@ -2035,7 +2093,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
                <div className="w-px h-8 bg-white/10"></div>
 
                <button 
-                  onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags)}
+                  onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags, data.mediaType)}
                   className="text-zinc-400 hover:text-white hover:scale-110 active:scale-95 transition-all flex flex-col items-center">
                   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                </button>
@@ -2067,6 +2125,8 @@ export default defineContentScript({
     const data = parseRule34Page(document, new URLSearchParams(window.location.search));
     if (!data) return;
 
+    (window as any).__r34proDismissLoadingShell?.();
+
     // Root isolation is handled via .void-active class toggling in the App component.
 
     const rootContainer = document.createElement('div');
@@ -2077,7 +2137,6 @@ export default defineContentScript({
     setTimeout(() => {
         const root = createRoot(rootContainer);
         root.render(<App initialData={data} />);
-        (window as any).__r34proDismissLoadingShell?.();
     }, 0);
   }
 });
