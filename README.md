@@ -36,16 +36,21 @@ R34 Pro can also run on Android as a standalone app. The Android build wraps the
 
 ### Install on your phone
 
-1. Build the APK on your computer:
-   ```bash
-   npm install
-   npm run build:android
-   ```
-2. Copy the APK to your phone:
-   `android/app/build/outputs/apk/release/app-release.apk`
-3. On Android, enable **Install unknown apps** for your file manager or browser.
-4. Open the APK and install **R34 Pro**.
-5. Launch the app. It opens Rule34 with the R34 Pro interface already active.
+**Direct download:** grab the prebuilt APK from [`releases/r34pro-1.7.0.apk`](releases/r34pro-1.7.0.apk) in this repo (GitHub → browse to `releases/` → download).
+
+1. Download `releases/r34pro-1.7.0.apk` to your phone.
+2. On Android, enable **Install unknown apps** for your file manager or browser.
+3. Open the APK and install **R34 Pro**.
+4. Launch the app. It opens Rule34 with the R34 Pro interface already active.
+
+Or build it yourself:
+
+```bash
+npm install
+npm run build:android
+```
+
+Output: `android/app/build/outputs/apk/release/app-release.apk`
 
 Downloads from the app are saved to your phone's **Downloads** folder.
 
