@@ -140,7 +140,10 @@ const App = ({ initialData }: { initialData: PageData }) => {
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const imageRef = useRef<HTMLImageElement>(null);
+  const postImageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const postViewContainerRef = useRef<HTMLDivElement>(null);
+  const touchGestureRef = useRef<'none' | 'pan' | 'pinch'>('none');
 
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -221,6 +224,20 @@ const App = ({ initialData }: { initialData: PageData }) => {
     if (!trimmed) return;
     window.location.href = `${RULE34_ORIGIN}/index.php?page=post&s=list&tags=${encodeURIComponent(trimmed)}`;
   };
+
+  const appendTagToSearch = useCallback((tag: string) => {
+    const normalized = tag.replace(/\s+/g, '_').trim();
+    if (!normalized) return;
+    setSearchValue((prev) => {
+      const parts = prev.trim() ? prev.trim().split(/\s+/) : [];
+      if (parts.includes(normalized)) {
+        return prev.endsWith(' ') ? prev : `${prev.trim()} `;
+      }
+      return `${prev.trim() ? `${prev.trim()} ` : ''}${normalized} `;
+    });
+    setSidebarOpen(true);
+    setShowSuggestions(false);
+  }, []);
 
   const postId = data.type === 'post' ? data.id : null;
 
@@ -425,45 +442,15 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
   useEffect(() => {
     if (!isMobile || data.type !== 'post') return;
-    if (lightboxOpen && !isAndroidApp) return;
+
+    const container = lightboxOpen ? containerRef.current : postViewContainerRef.current;
+    if (!container) return;
 
     let startX = 0;
     let startY = 0;
-
-    const onTouchStart = (event: TouchEvent) => {
-      startX = event.touches[0]?.clientX ?? 0;
-      startY = event.touches[0]?.clientY ?? 0;
-    };
-
-    const onTouchEnd = (event: TouchEvent) => {
-      const touch = event.changedTouches[0];
-      if (!touch) return;
-
-      const deltaX = touch.clientX - startX;
-      const deltaY = touch.clientY - startY;
-      if (Math.abs(deltaX) < 72 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
-
-      if (isAndroidApp && lightboxOpen) resetLightboxUiTimer();
-      if (deltaX > 0) navigateToPost('prev');
-      else navigateToPost('next');
-    };
-
-    window.addEventListener('touchstart', onTouchStart, { passive: true });
-    window.addEventListener('touchend', onTouchEnd, { passive: true });
-    return () => {
-      window.removeEventListener('touchstart', onTouchStart);
-      window.removeEventListener('touchend', onTouchEnd);
-    };
-  }, [isMobile, isAndroidApp, data.type, lightboxOpen, navigateToPost, resetLightboxUiTimer]);
-
-  useEffect(() => {
-    if (!isMobile || !lightboxOpen) return;
-
-    const container = containerRef.current;
-    if (!container) return;
-
     let initialDistance = 0;
-    let initialScale = scale;
+    let initialScale = 1;
+    let moved = false;
 
     const getDistance = (touches: TouchList) => {
       if (touches.length < 2) return 0;
@@ -474,21 +461,85 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
     const onTouchStart = (event: TouchEvent) => {
       if (event.touches.length === 2) {
+        touchGestureRef.current = 'pinch';
         initialDistance = getDistance(event.touches);
         initialScale = scale;
+        moved = true;
+        if (isAndroidApp && lightboxOpen) resetLightboxUiTimer();
+        return;
+      }
+
+      if (event.touches.length === 1) {
+        startX = event.touches[0].clientX;
+        startY = event.touches[0].clientY;
+        moved = false;
+        if (scale > 1) {
+          touchGestureRef.current = 'pan';
+          dragStart.current = { x: startX - position.x, y: startY - position.y };
+          setIsDragging(true);
+        } else {
+          touchGestureRef.current = 'none';
+        }
       }
     };
 
     const onTouchMove = (event: TouchEvent) => {
-      if (event.touches.length !== 2 || !initialDistance) return;
-      event.preventDefault();
-      const distance = getDistance(event.touches);
-      const nextScale = Math.min(Math.max(1, initialScale * (distance / initialDistance)), 10);
-      setScale(nextScale);
+      if (touchGestureRef.current === 'pinch' && event.touches.length === 2 && initialDistance) {
+        event.preventDefault();
+        moved = true;
+        const distance = getDistance(event.touches);
+        const nextScale = Math.min(Math.max(1, initialScale * (distance / initialDistance)), 8);
+        setScale(nextScale);
+        if (nextScale <= 1) setPosition({ x: 0, y: 0 });
+        return;
+      }
+
+      if (touchGestureRef.current === 'pan' && event.touches.length === 1 && scale > 1) {
+        event.preventDefault();
+        moved = true;
+        setPosition({
+          x: event.touches[0].clientX - dragStart.current.x,
+          y: event.touches[0].clientY - dragStart.current.y,
+        });
+      } else if (event.touches[0] && (Math.abs(event.touches[0].clientX - startX) > 8 || Math.abs(event.touches[0].clientY - startY) > 8)) {
+        moved = true;
+      }
     };
 
-    const onTouchEnd = () => {
-      initialDistance = 0;
+    const onTouchEnd = (event: TouchEvent) => {
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+
+      const deltaX = touch.clientX - startX;
+      const deltaY = touch.clientY - startY;
+
+      if (touchGestureRef.current === 'pinch' || touchGestureRef.current === 'pan') {
+        touchGestureRef.current = 'none';
+        setIsDragging(false);
+        if (scale <= 1.05) {
+          setScale(1);
+          setPosition({ x: 0, y: 0 });
+        }
+        return;
+      }
+
+      if (moved || scale > 1) {
+        touchGestureRef.current = 'none';
+        return;
+      }
+
+      if (lightboxOpen && deltaY > 90 && deltaY > Math.abs(deltaX) * 1.3) {
+        setLightboxOpen(false);
+        return;
+      }
+
+      if (Math.abs(deltaX) >= 72 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+        if (isAndroidApp && lightboxOpen) resetLightboxUiTimer();
+        if (deltaX > 0) navigateToPost('prev');
+        else navigateToPost('next');
+      }
+
+      touchGestureRef.current = 'none';
     };
 
     container.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -499,7 +550,16 @@ const App = ({ initialData }: { initialData: PageData }) => {
       container.removeEventListener('touchmove', onTouchMove);
       container.removeEventListener('touchend', onTouchEnd);
     };
-  }, [isMobile, lightboxOpen, scale]);
+  }, [
+    isMobile,
+    isAndroidApp,
+    data.type,
+    lightboxOpen,
+    scale,
+    position,
+    navigateToPost,
+    resetLightboxUiTimer,
+  ]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -828,6 +888,9 @@ const App = ({ initialData }: { initialData: PageData }) => {
           {/* SEARCH (Restored to Top) */}
           <div className="flex flex-col gap-4 py-4 relative z-10">
             <div className="text-[10px] font-black text-gold px-1 text-left w-full uppercase tracking-[0.2em] opacity-80">Search Engine</div>
+            {isMobile && (
+              <p className="text-[10px] text-zinc-500 px-1 -mt-2">Tap tags to add them here, then search.</p>
+            )}
             <form 
               onSubmit={(e) => {
                 e.preventDefault();
@@ -915,6 +978,16 @@ const App = ({ initialData }: { initialData: PageData }) => {
                <div className="text-sm font-bold text-zinc-300 uppercase tracking-widest px-1">{cat}</div>
                <div className="flex flex-wrap gap-3">
                  {tags.map((t, ti) => (
+                   isMobile ? (
+                     <button
+                       key={`${cat}-${t}-${ti}`}
+                       type="button"
+                       onClick={() => appendTagToSearch(t)}
+                       className={`px-5 py-2.5 rounded-2xl text-sm transition-all cursor-pointer border hover:-translate-y-0.5 hover:scale-105 active:scale-95 inline-block font-medium text-left ${getTagColor(cat)}`}
+                     >
+                       {t.replace(/_/g, ' ')}
+                     </button>
+                   ) : (
                    <a 
                      key={`${cat}-${t}-${ti}`} 
                      href={`${RULE34_ORIGIN}/index.php?page=post&s=list&tags=${encodeURIComponent(t.replace(/\s+/g, '_'))}`}
@@ -922,6 +995,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
                    >
                      {t.replace(/_/g, ' ')}
                    </a>
+                   )
                  ))}
                </div>
              </div>
@@ -1201,8 +1275,11 @@ const App = ({ initialData }: { initialData: PageData }) => {
             </div>
             
             <div 
-              className="relative w-full h-full rounded-2xl overflow-hidden glass-panel flex items-center justify-center cursor-zoom-in group shadow-2xl transition-all duration-300 bg-zinc-900/50"
-              onClick={() => setLightboxOpen(true)}
+              ref={postViewContainerRef}
+              className={`relative w-full h-full rounded-2xl overflow-hidden glass-panel flex items-center justify-center group shadow-2xl transition-all duration-300 bg-zinc-900/50 ${scale > 1 ? 'cursor-grab' : 'cursor-zoom-in'}`}
+              onClick={() => {
+                if (scale <= 1 && !isDragging) setLightboxOpen(true);
+              }}
             >
                {data.mediaType === 'video' ? (
                  <video 
@@ -1212,22 +1289,28 @@ const App = ({ initialData }: { initialData: PageData }) => {
                    autoPlay
                    loop
                    playsInline
-                   className={`max-w-full max-h-full object-contain transition-transform duration-500 group-hover:scale-[1.02] ${loading ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}
+                   className={`max-w-full max-h-full object-contain transition-transform duration-300 ${loading ? 'opacity-0 scale-95' : 'opacity-100'} ${scale <= 1 ? 'group-hover:scale-[1.02]' : ''}`}
+                   style={scale > 1 ? { transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`, transformOrigin: 'center center' } : undefined}
                  />
                ) : (
                  <img 
+                   ref={postImageRef}
                    key={data.imageUrl}
                    src={data.imageUrl} 
-                   className={`max-w-full max-h-full object-contain transition-transform duration-500 group-hover:scale-[1.02] ${loading ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}
+                   className={`max-w-full max-h-full object-contain transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${loading ? 'opacity-0 scale-95' : 'opacity-100'} ${scale <= 1 ? 'group-hover:scale-[1.02]' : ''}`}
+                   style={scale > 1 ? { transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`, transformOrigin: 'center center' } : undefined}
                    alt="Post Image"
+                   draggable={false}
                  />
                )}
+               {scale <= 1 && (
                <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none flex items-end justify-center pb-8 ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity duration-300`}>
                  <span className="text-white backdrop-blur-md px-6 py-2.5 rounded-full bg-black/60 font-medium text-sm border border-white/10 flex items-center gap-2 shadow-xl translate-y-0">
                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-                   {isMobile ? 'Tap for fullscreen' : 'Enter Fullscreen Lightbox'}
+                   {isMobile ? 'Tap for fullscreen · Pinch to zoom' : 'Enter Fullscreen Lightbox'}
                  </span>
                </div>
+               )}
             </div>
           </>
         ) : showSearchLanding ? (
@@ -1445,7 +1528,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
                   maxHeight: '100%', 
                   objectFit: 'contain',
                   cursor: scale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'crosshair',
-                  transformOrigin: '0 0' // Crucial for zoom-to-cursor math
+                  transformOrigin: 'center center',
                 }}
                 className={`shadow-2xl rounded-lg transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${loading ? 'opacity-50' : 'opacity-100'}`}
                 alt="Highres"
@@ -1476,7 +1559,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
           </div>
 
           <div 
-             className={`absolute top-6 left-6 flex flex-col items-start gap-4 z-50 lightbox-mobile-controls transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-0 pointer-events-none' : isMobile ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-10 group-hover/lightbox:opacity-100 group-hover/lightbox:translate-x-0'} transition-all duration-300`}
+             className={`absolute top-6 left-6 flex flex-col items-start gap-4 z-50 lightbox-mobile-controls transition-all duration-300 ${isAndroidApp && !lightboxUiVisible ? 'lightbox-ui-hidden opacity-0 pointer-events-none' : isMobile ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-10 group-hover/lightbox:opacity-100 group-hover/lightbox:translate-x-0'}`}
              onClick={e => {
                e.stopPropagation();
                if (isAndroidApp) resetLightboxUiTimer();
