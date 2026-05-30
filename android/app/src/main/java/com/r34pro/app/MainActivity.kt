@@ -20,6 +20,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewAssetLoader
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
@@ -28,17 +29,6 @@ class MainActivity : AppCompatActivity() {
     private var extensionInjectedForUrl: String? = null
     private var pendingShowPinOnResume = false
     private var immersiveRequested = false
-
-    private val injectStylesheetJs = """
-        (function() {
-          if (document.getElementById('r34pro-content-css-link')) return;
-          var link = document.createElement('link');
-          link.id = 'r34pro-content-css-link';
-          link.rel = 'stylesheet';
-          link.href = 'https://appassets.androidplatform.net/assets/extension/content-scripts/content.css';
-          document.head.appendChild(link);
-        })();
-    """.trimIndent()
 
     private val assetLoader: WebViewAssetLoader by lazy {
         WebViewAssetLoader.Builder()
@@ -216,10 +206,13 @@ class MainActivity : AppCompatActivity() {
         }
         extensionInjectedForUrl = currentUrl
 
-        view.evaluateJavascript(injectStylesheetJs, null)
         injectScript(view, "r34pro/chrome-polyfill.js") {
-            injectScript(view, "extension/content-scripts/content.js") {
-                verifyInjection(view)
+            injectScript(view, "extension/background.js") {
+                injectAssetCss(view, "extension/content-scripts/content.css") {
+                    injectScript(view, "extension/content-scripts/content.js") {
+                        view.postDelayed({ verifyInjection(view) }, 350)
+                    }
+                }
             }
         }
     }
@@ -233,6 +226,25 @@ class MainActivity : AppCompatActivity() {
         } catch (error: Exception) {
             Log.e(TAG, "Failed to inject script: $assetPath", error)
             onDone?.invoke()
+        }
+    }
+
+    private fun injectAssetCss(view: WebView, assetPath: String, onDone: () -> Unit) {
+        try {
+            val css = readAsset(assetPath)
+            val js = """
+                (function() {
+                  if (document.getElementById('r34pro-content-css')) return;
+                  var style = document.createElement('style');
+                  style.id = 'r34pro-content-css';
+                  style.textContent = ${JSONObject.quote(css)};
+                  document.head.appendChild(style);
+                })();
+            """.trimIndent()
+            view.evaluateJavascript(js) { onDone() }
+        } catch (error: Exception) {
+            Log.e(TAG, "Failed to inject css: $assetPath", error)
+            onDone()
         }
     }
 
@@ -251,7 +263,7 @@ class MainActivity : AppCompatActivity() {
         ) { result ->
             Log.d(TAG, "Injection check: $result")
             if (result == null || result.contains("\"hasRoot\":false")) {
-                view.postDelayed({ reinjectIfNeeded(view) }, 150)
+                view.postDelayed({ reinjectIfNeeded(view) }, 500)
             }
         }
     }

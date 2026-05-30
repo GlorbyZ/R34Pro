@@ -2530,7 +2530,11 @@ export default defineContentScript({
 
     (window as any).__r34proDismissLoadingShell?.();
 
-    const root = createRoot(rootContainer);
-    root.render(<App initialData={data} />);
+    // Defer one tick so Android injection isn't torn down mid-parse by WXT invalidation.
+    setTimeout(() => {
+      if (document.getElementById('reframer-root')?.childElementCount) return;
+      const root = createRoot(rootContainer);
+      root.render(<App initialData={data} />);
+    }, 0);
   }
 });
