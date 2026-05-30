@@ -36,9 +36,9 @@ R34 Pro can also run on Android as a standalone app. The Android build wraps the
 
 ### Install on your phone
 
-**Direct download:** grab the prebuilt APK from [`releases/r34pro-1.7.0.apk`](releases/r34pro-1.7.0.apk) in this repo (GitHub → browse to `releases/` → download).
+**Direct download (always use `main`):** [`releases/r34pro-1.7.0.apk`](https://github.com/GlorbyZ/R34Pro/raw/main/releases/r34pro-1.7.0.apk)
 
-1. Download `releases/r34pro-1.7.0.apk` to your phone.
+1. Download the APK from the link above (or browse `releases/` on the **`main`** branch).
 2. On Android, enable **Install unknown apps** for your file manager or browser.
 3. Open the APK and install **R34 Pro**.
 4. Launch the app. It opens Rule34 with the R34 Pro interface already active.
