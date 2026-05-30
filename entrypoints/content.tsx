@@ -376,6 +376,10 @@ const App = ({ initialData }: { initialData: PageData }) => {
     if (typeof window === 'undefined') return false;
     return window.matchMedia('(max-width: 900px)').matches || !!(window as any).R34ProAndroid;
   });
+  const [isLandscape, setIsLandscape] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(orientation: landscape)').matches;
+  });
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
     const android = !!(window as any).R34ProAndroid;
@@ -623,25 +627,45 @@ const App = ({ initialData }: { initialData: PageData }) => {
   }, [isAndroidApp, lightboxOpen, startLightboxUiAutoHide]);
 
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 900px)');
-    const syncMobile = () => {
-      const mobile = media.matches || !!(window as any).R34ProAndroid;
+    const mobileMedia = window.matchMedia('(max-width: 900px)');
+    const landscapeMedia = window.matchMedia('(orientation: landscape)');
+
+    const syncLayout = () => {
+      const mobile = mobileMedia.matches || !!(window as any).R34ProAndroid;
+      const landscape = landscapeMedia.matches;
       setIsMobile(mobile);
+      setIsLandscape(landscape);
       document.body.classList.toggle('r34pro-mobile', mobile);
+      document.documentElement.classList.toggle('r34pro-landscape', landscape);
       if ((window as any).R34ProAndroid) {
         document.documentElement.classList.add('r34pro-android');
       }
       if (mobile && !(window as any).R34ProAndroid) setSidebarOpen(false);
     };
-    syncMobile();
-    media.addEventListener('change', syncMobile);
+
+    syncLayout();
+    mobileMedia.addEventListener('change', syncLayout);
+    landscapeMedia.addEventListener('change', syncLayout);
+    window.addEventListener('resize', syncLayout);
     return () => {
-      media.removeEventListener('change', syncMobile);
+      mobileMedia.removeEventListener('change', syncLayout);
+      landscapeMedia.removeEventListener('change', syncLayout);
+      window.removeEventListener('resize', syncLayout);
       document.body.classList.remove('r34pro-mobile');
+      document.documentElement.classList.remove('r34pro-landscape');
     };
   }, []);
 
-  const effectiveGridSize = isMobile ? Math.min(gridSize, 2) : gridSize;
+  const effectiveGridSize = (() => {
+    if (!isMobile) return gridSize;
+    if (isLandscape) {
+      const width = typeof window !== 'undefined' ? window.innerWidth : 800;
+      if (width >= 1024) return Math.min(Math.max(gridSize, 4), 6);
+      if (width >= 768) return Math.min(Math.max(gridSize, 3), 5);
+      return Math.min(Math.max(gridSize, 3), 4);
+    }
+    return Math.min(gridSize, 2);
+  })();
 
   const submitSearch = (tags: string) => {
     const trimmed = tags.trim();
@@ -1815,14 +1839,14 @@ const App = ({ initialData }: { initialData: PageData }) => {
           <button
             type="button"
             onClick={() => setSidebarOpen(true)}
-            className="mobile-touch-btn w-11 h-11 rounded-xl bg-zinc-900 border border-white/10 text-white flex items-center justify-center active:scale-95 transition-all"
+            className="mobile-touch-btn mobile-top-bar-btn w-11 h-11 rounded-xl bg-zinc-900 border border-white/10 text-white flex items-center justify-center active:scale-95 transition-all shrink-0"
             title="Open menu"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 mobile-top-bar-title">
             <div className="text-[11px] font-black uppercase tracking-[0.2em] text-theme-primary">R34 Pro</div>
-            <div className="text-[10px] text-zinc-500 truncate">
+            <div className="text-[10px] text-zinc-500 truncate mobile-top-bar-subtitle">
               {showSearchLanding
                 ? 'Search'
                 : data.type === 'account'
@@ -1891,7 +1915,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
           <button
             type="button"
             onClick={() => navigateToPost('prev')}
-            className="mobile-touch-btn flex-1 min-h-[48px] rounded-2xl bg-zinc-900 border border-white/10 text-white font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all"
+            className="mobile-touch-btn mobile-bottom-bar-btn flex-1 min-h-[48px] rounded-2xl bg-zinc-900 border border-white/10 text-white font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all"
           >
             Prev
           </button>
@@ -1924,7 +1948,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
       {/* Main Content Area */}
       <div
         ref={mainContentRef}
-        className={`flex-1 relative flex flex-col items-center justify-center overflow-hidden bg-zinc-950/50 mobile-main ${showSearchLanding ? 'overflow-x-hidden overscroll-none' : ''} ${isMobile ? `pt-[calc(4.25rem+env(safe-area-inset-top))] ${data.type === 'post' && !lightboxOpen ? 'pb-[calc(5rem+env(safe-area-inset-bottom))]' : 'pb-2'} px-2` : 'p-4 md:p-8'}`}
+        className={`flex-1 relative flex flex-col items-center justify-center overflow-hidden bg-zinc-950/50 mobile-main ${showSearchLanding ? 'overflow-x-hidden overscroll-none mobile-search-shell' : ''} ${isMobile ? `mobile-main-inset ${data.type === 'post' && !lightboxOpen ? 'mobile-main-post-inset' : ''}` : 'p-4 md:p-8'}`}
       >
         {data.type === 'post' && !lightboxOpen && isMobile && (
           <div ref={postGestureRef} className="absolute inset-0 z-[8] mobile-gesture-layer" aria-hidden />
@@ -1939,7 +1963,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
         )}
 
         {data.type === 'account' ? (
-          <div className="mobile-search-landing w-full flex-1 min-h-0 flex flex-col items-center justify-start p-6 gap-6 overflow-y-auto max-w-lg mx-auto">
+          <div className="mobile-account-page mobile-search-landing w-full flex-1 min-h-0 flex flex-col items-center justify-start p-6 gap-6 overflow-y-auto max-w-lg mx-auto">
             <div className="text-center space-y-2 w-full">
               <h1 className="text-2xl font-black uppercase tracking-[0.15em] text-white">
                 {data.variant === 'login' ? 'Login' : data.isLoggedIn ? 'My Account' : 'Account'}
@@ -2062,8 +2086,8 @@ const App = ({ initialData }: { initialData: PageData }) => {
             
             <div 
               ref={postViewContainerRef}
-              className={`relative w-full h-full rounded-2xl overflow-hidden flex items-center justify-center group transition-all duration-300 ${
-                lightboxOpen ? 'fixed inset-0 z-[99999998] bg-black/98 rounded-none' : ''
+              className={`mobile-post-stage relative w-full h-full rounded-2xl overflow-hidden flex items-center justify-center group transition-all duration-300 ${
+                lightboxOpen ? 'fixed inset-0 z-[99999998] bg-black/98 rounded-none mobile-post-lightbox' : ''
               } ${scale > 1 ? 'cursor-grab' : 'cursor-zoom-in'}`}
             >
                {data.mediaType === 'video' ? (
@@ -2075,7 +2099,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
                    showControls={lightboxOpen}
                    muted={videoMuted}
                    onTap={isAndroidApp && lightboxOpen ? toggleAndroidLightboxUi : undefined}
-                   className={`max-w-full max-h-full object-contain transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${lightboxOpen ? 'max-h-[85vh] shadow-2xl rounded-lg' : ''} ${scale <= 1 && !lightboxOpen ? 'group-hover:scale-[1.02]' : ''}`}
+                   className={`mobile-post-media max-w-full max-h-full object-contain transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${lightboxOpen ? 'max-h-[85vh] shadow-2xl rounded-lg' : ''} ${scale <= 1 && !lightboxOpen ? 'group-hover:scale-[1.02]' : ''}`}
                    style={scale > 1 ? { transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`, transformOrigin: 'center center' } : undefined}
                  />
                ) : (
@@ -2092,22 +2116,24 @@ const App = ({ initialData }: { initialData: PageData }) => {
             </div>
           </>
         ) : showSearchLanding ? (
-          <div className="mobile-search-landing w-full flex-1 min-h-0 flex flex-col items-center justify-center p-6 gap-6 overflow-hidden">
-            <img
-              src={chrome.runtime.getURL('logo.webp')}
-              className="w-24 h-24 rounded-3xl shadow-[0_0_50px_rgba(212,175,55,0.35)] border border-theme-primary/30 object-contain p-2 bg-black/40"
-              alt="R34 Pro"
-            />
-            <div className="text-center space-y-3 max-w-md">
-              <h1 className="text-2xl font-black uppercase tracking-[0.2em] text-white">R34 Pro Search</h1>
-              <p className="text-sm text-zinc-400">Enter tags to browse Rule34 with the full reskin experience.</p>
+          <div className="mobile-search-landing mobile-search-shell w-full flex-1 min-h-0 flex flex-col items-center justify-center p-6 gap-4 overflow-hidden">
+            <div className="mobile-search-hero flex flex-col items-center gap-4 w-full max-w-md">
+              <img
+                src={chrome.runtime.getURL('logo.webp')}
+                className="mobile-search-logo w-24 h-24 rounded-3xl shadow-[0_0_50px_rgba(212,175,55,0.35)] border border-theme-primary/30 object-contain p-2 bg-black/40 shrink-0"
+                alt="R34 Pro"
+              />
+              <div className="text-center space-y-3 max-w-md mobile-search-copy">
+                <h1 className="text-2xl font-black uppercase tracking-[0.2em] text-white">R34 Pro Search</h1>
+                <p className="text-sm text-zinc-400">Enter tags to browse Rule34 with the full reskin experience.</p>
+              </div>
             </div>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 submitSearch(searchValue);
               }}
-              className="w-full max-w-md flex flex-col gap-4"
+              className="mobile-search-form w-full max-w-md flex flex-col gap-4"
             >
               <div className="relative">
                 <input
@@ -2188,7 +2214,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
                   <div 
                     key={item.id} 
                     onClick={() => { window.location.href = buildPostViewUrl(item.id, data.searchTags); }}
-                    className="mobile-grid-item aspect-[3/4] relative rounded-2xl overflow-hidden glass-panel border border-white/5 hover:border-theme-primary/50 transition-all group cursor-pointer shadow-lg hover:scale-[1.05] hover:-translate-y-1 active:scale-95"
+                    className="mobile-grid-item aspect-[3/4] landscape:aspect-square relative rounded-2xl overflow-hidden glass-panel border border-white/5 hover:border-theme-primary/50 transition-all group cursor-pointer shadow-lg hover:scale-[1.05] hover:-translate-y-1 active:scale-95"
                   >
                      <img 
                        src={item.thumbUrl} 
