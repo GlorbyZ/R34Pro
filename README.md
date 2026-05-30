@@ -30,6 +30,37 @@ If you aren't familiar with Git or coding, follow these steps to get R34 Pro run
     `r34pro/.output/chrome-mv3`
 7.  **Done**: Go to Rule34.xxx and enjoy the high-performance navigation!
 
+## 📱 Android App (APK)
+
+R34 Pro can also run on Android as a standalone app. The Android build wraps the extension inside a WebView and injects the same R34 Pro UI on `rule34.xxx`.
+
+### Install on your phone
+
+1. Build the APK on your computer:
+   ```bash
+   npm install
+   npm run build:android
+   ```
+2. Copy the APK to your phone:
+   `android/app/build/outputs/apk/release/app-release.apk`
+3. On Android, enable **Install unknown apps** for your file manager or browser.
+4. Open the APK and install **R34 Pro**.
+5. Launch the app. It opens Rule34 with the R34 Pro interface already active.
+
+Downloads from the app are saved to your phone's **Downloads** folder.
+
+### Rebuild after code changes
+
+```bash
+npm run build:android
+```
+
+For a debug build:
+
+```bash
+npm run build:android:debug
+```
+
 ## 🛠️ Developer Setup (Build from Source)
 
 For those who want to modify the code:

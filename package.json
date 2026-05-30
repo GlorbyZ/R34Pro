@@ -12,7 +12,10 @@
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "compile": "tsc --noEmit",
-    "postinstall": "wxt prepare"
+    "postinstall": "wxt prepare",
+    "sync:android": "node scripts/sync-android-assets.mjs",
+    "build:android": "npm run build && npm run sync:android && cd android && ./gradlew assembleRelease",
+    "build:android:debug": "npm run build && npm run sync:android && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
     "clsx": "^2.1.1",

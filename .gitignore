@@ -11,6 +11,15 @@ lerna-debug.log*
 node_modules
 .output
 .wxt
+android/.gradle
+android/build
+android/app/build
+android/local.properties
+android/app/src/main/assets/extension
+android-sdk
+.gradle-dist
+gradle.zip
+cmdline-tools.zip
 stats.html
 stats-*.json
 
