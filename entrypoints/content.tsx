@@ -152,6 +152,9 @@ const App = ({ initialData }: { initialData: PageData }) => {
       const mobile = media.matches || !!(window as any).R34ProAndroid;
       setIsMobile(mobile);
       document.body.classList.toggle('r34pro-mobile', mobile);
+      if ((window as any).R34ProAndroid) {
+        document.documentElement.classList.add('r34pro-android');
+      }
       if (mobile) setSidebarOpen(false);
     };
     syncMobile();
@@ -1096,7 +1099,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
       )}
 
       {/* Main Content Area */}
-      <div className={`flex-1 relative flex flex-col items-center justify-center overflow-hidden bg-zinc-950/50 mobile-main ${isMobile ? `pt-[calc(3.5rem+env(safe-area-inset-top))] ${data.type === 'post' && !lightboxOpen ? 'pb-[calc(4.75rem+env(safe-area-inset-bottom))]' : 'pb-2'} px-2` : 'p-4 md:p-8'}`}>
+      <div className={`flex-1 relative flex flex-col items-center justify-center overflow-hidden bg-zinc-950/50 mobile-main ${isMobile ? `pt-[calc(4.25rem+env(safe-area-inset-top))] ${data.type === 'post' && !lightboxOpen ? 'pb-[calc(5rem+env(safe-area-inset-bottom))]' : 'pb-2'} px-2` : 'p-4 md:p-8'}`}>
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-700 via-zinc-950 to-zinc-950 pointer-events-none"></div>
         {loading && (
            <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 z-20 backdrop-blur-md transition-all duration-300">

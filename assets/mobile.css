@@ -1,4 +1,124 @@
-/* Mobile / Android layout overrides */
+/* Android app: uniform sizing across devices */
+html.r34pro-android {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html.r34pro-android .void-navigator-root {
+  font-size: clamp(16px, 4.2vw, 18px);
+}
+
+html.r34pro-android body.r34pro-mobile.void-active,
+html.r34pro-android body.r34pro-mobile.void-active html {
+  touch-action: pan-y;
+}
+
+html.r34pro-android .void-navigator-root .mobile-top-bar {
+  padding-top: env(safe-area-inset-top, 0px);
+  height: calc(4.25rem + env(safe-area-inset-top, 0px));
+}
+
+html.r34pro-android .void-navigator-root .mobile-bottom-bar {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-top: 0.75rem;
+}
+
+html.r34pro-android .void-navigator-root .mobile-drawer-backdrop {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+html.r34pro-android .void-navigator-root .mobile-sidebar {
+  width: min(100vw, 22rem) !important;
+  box-shadow: 24px 0 80px rgba(0, 0, 0, 0.85);
+}
+
+html.r34pro-android .void-navigator-root .mobile-main {
+  min-height: 0;
+}
+
+html.r34pro-android .void-navigator-root .mobile-grid {
+  gap: 0.85rem !important;
+  padding: 0.65rem !important;
+}
+
+html.r34pro-android .void-navigator-root .mobile-grid-item {
+  border-radius: 1rem !important;
+}
+
+html.r34pro-android .void-navigator-root .mobile-grid-item .absolute.inset-x-0.bottom-0 {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+html.r34pro-android .void-navigator-root .mobile-touch-btn {
+  min-height: 3.25rem !important;
+  min-width: 3.25rem !important;
+}
+
+html.r34pro-android .void-navigator-root .mobile-bottom-bar .mobile-touch-btn {
+  min-height: 3.5rem !important;
+}
+
+html.r34pro-android .void-navigator-root .mobile-bottom-bar .mobile-touch-btn.flex-1 {
+  font-size: 0.95rem !important;
+  letter-spacing: 0.12em !important;
+}
+
+html.r34pro-android .void-navigator-root .mobile-walkthrough-panel {
+  padding: 2rem 1.25rem !important;
+  border-radius: 2rem !important;
+  gap: 2rem !important;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+html.r34pro-android .void-navigator-root .mobile-walkthrough-panel h2 {
+  font-size: 1.85rem !important;
+}
+
+html.r34pro-android .void-navigator-root .mobile-walkthrough-panel p {
+  font-size: 1rem !important;
+}
+
+html.r34pro-android .void-navigator-root .lightbox-mobile-controls {
+  opacity: 1 !important;
+  transform: none !important;
+  left: 0.75rem !important;
+  right: 0.75rem !important;
+  top: auto !important;
+  bottom: calc(6rem + env(safe-area-inset-bottom, 0px)) !important;
+  width: auto !important;
+}
+
+html.r34pro-android .void-navigator-root .lightbox-mobile-controls .glass-panel {
+  width: 100%;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.85rem !important;
+  padding: 0.85rem 1rem !important;
+}
+
+html.r34pro-android .void-navigator-root .desktop-only-nav-overlay {
+  display: none !important;
+}
+
+html.r34pro-android .void-navigator-root .mobile-sidebar-footer-nav {
+  display: none !important;
+}
+
+html.r34pro-android .void-navigator-root input,
+html.r34pro-android .void-navigator-root button,
+html.r34pro-android .void-navigator-root select {
+  font-size: 1rem !important;
+}
+
+html.r34pro-android .void-navigator-root .mobile-top-bar .text-\[11px\],
+html.r34pro-android .void-navigator-root .mobile-top-bar .text-\[10px\] {
+  font-size: 0.8rem !important;
+}
+
+/* Mobile / narrow viewport layout overrides */
 @media (max-width: 900px) {
   body.r34pro-mobile.void-active,
   body.r34pro-mobile.void-active html {
