@@ -133,12 +133,11 @@ const LightboxChromeButton = ({
     disabled={disabled}
     onPointerDown={stopLightboxChromeEvent}
     onTouchStart={stopLightboxChromeEvent}
-    onTouchEnd={stopLightboxChromeEvent}
     onClick={(event) => {
       stopLightboxChromeEvent(event);
       onClick();
     }}
-    className={className}
+    className={`lightbox-chrome-btn ${className}`}
   >
     {children}
   </button>
@@ -338,12 +337,14 @@ const App = ({ initialData }: { initialData: PageData }) => {
   }, []);
 
   const closeLightbox = useCallback(() => {
-    if (lightboxHistoryPushedRef.current) {
-      lightboxHistoryPushedRef.current = false;
-      history.back();
-      return;
-    }
+    lightboxHistoryPushedRef.current = false;
     setLightboxOpen(false);
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('r34_lb') || url.searchParams.has('r34_ui')) {
+      url.searchParams.delete('r34_lb');
+      url.searchParams.delete('r34_ui');
+      history.replaceState({ r34Lightbox: false }, '', url.toString());
+    }
   }, []);
 
   useEffect(() => { openLightboxRef.current = openLightbox; }, [openLightbox]);
@@ -864,7 +865,13 @@ const App = ({ initialData }: { initialData: PageData }) => {
       return Math.hypot(dx, dy);
     };
 
+    const isChromeTarget = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) return false;
+      return !!target.closest('.lightbox-chrome-btn, .lightbox-top-actions, .lightbox-mobile-controls, button, a, input, select');
+    };
+
     const onTouchStart = (event: TouchEvent) => {
+      if (isChromeTarget(event.target)) return;
       swipeHandledRef.current = false;
       if (event.touches.length === 2) {
         gesture = 'pinch';
@@ -2167,7 +2174,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
             onMouseLeave={() => setIsDragging(false)}
           >
             {isMobile && (
-              <div ref={lightboxGestureRef} className="absolute inset-0 z-[12] mobile-gesture-layer" aria-hidden />
+              <div ref={lightboxGestureRef} className="absolute inset-x-0 top-16 bottom-28 z-[5] mobile-gesture-layer lightbox-media-gesture-layer" aria-hidden />
             )}
             <img 
                 ref={imageRef}
@@ -2190,21 +2197,21 @@ const App = ({ initialData }: { initialData: PageData }) => {
               />
           </div>
 
-          <div className={`absolute top-6 right-6 z-10 flex gap-3 transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-            <button 
+          <div className={`absolute top-6 right-6 z-[200] lightbox-top-actions flex gap-3 pointer-events-auto transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-50' : 'opacity-100'}`}>
+            <LightboxChromeButton
                 onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags, data.mediaType)}
-                className="bg-black/60 hover:bg-theme-primary border border-white/10 hover:border-theme-bright text-white hover:text-black p-4 rounded-full backdrop-blur-3xl transition-all shadow-2xl group glow-theme cursor-pointer active:opacity-70"
                 title="Download Archival Copy"
+                className="bg-black/60 hover:bg-theme-primary border border-white/10 hover:border-theme-bright text-white hover:text-black p-4 rounded-full backdrop-blur-3xl transition-all shadow-2xl group glow-theme cursor-pointer active:opacity-70"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="group-hover:-translate-y-0.5 transition-transform"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            </button>
-            <button 
-               className="w-12 h-12 rounded-full bg-white/5 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all border border-white/10 hover:scale-110 active:scale-95 shadow-xl"
+            </LightboxChromeButton>
+            <LightboxChromeButton
                onClick={() => closeLightbox()}
                title="Close Lightbox (Esc)"
+               className="w-12 h-12 rounded-full bg-white/5 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all border border-white/10 hover:scale-110 active:scale-95 shadow-xl"
             >
                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-            </button>
+            </LightboxChromeButton>
           </div>
 
           <div 
@@ -2292,7 +2299,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
             closeLightbox();
           }}
         >
-          <div className={`absolute top-6 right-6 z-[200] lightbox-top-actions flex gap-3 pointer-events-auto transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-40' : 'opacity-100'}`}>
+          <div className={`absolute top-6 right-6 z-[200] lightbox-top-actions flex gap-3 pointer-events-auto transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-50' : 'opacity-100'}`}>
             <LightboxChromeButton
               onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags, data.mediaType)}
               title="Download"
