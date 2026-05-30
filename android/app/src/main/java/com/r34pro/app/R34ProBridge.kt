@@ -11,6 +11,12 @@ import android.widget.Toast
 
 class R34ProBridge(private val context: Context) {
     @JavascriptInterface
+    fun setImmersive(enabled: Boolean) {
+        val activity = context as? MainActivity ?: return
+        activity.runOnUiThread { activity.applyImmersiveMode(enabled) }
+    }
+
+    @JavascriptInterface
     fun download(url: String, filename: String) {
         try {
             val request = DownloadManager.Request(Uri.parse(url)).apply {

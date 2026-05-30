@@ -17,6 +17,8 @@ import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONObject
 
@@ -26,6 +28,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pinLock: PinLockController
     private var extensionInjectedForUrl: String? = null
     private var pendingShowPinOnResume = false
+    private var immersiveRequested = false
 
     private val assetLoader: WebViewAssetLoader by lazy {
         WebViewAssetLoader.Builder()
@@ -149,6 +152,29 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         if (!sessionUnlocked || pendingShowPinOnResume) {
             pinLock.show()
+        }
+        if (immersiveRequested) {
+            applyImmersiveMode(true)
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && immersiveRequested) {
+            applyImmersiveMode(true)
+        }
+    }
+
+    fun applyImmersiveMode(enabled: Boolean) {
+        immersiveRequested = enabled
+        WindowCompat.setDecorFitsSystemWindows(window, !enabled)
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        if (enabled) {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
         }
     }
 
