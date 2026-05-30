@@ -1,6 +1,23 @@
 (function () {
   var LOGO_URL = 'https://appassets.androidplatform.net/assets/extension/logo.webp';
 
+  function pauseAllPageMedia() {
+    try {
+      document.querySelectorAll('video, audio').forEach(function (el) {
+        try {
+          el.pause();
+          el.muted = true;
+          el.autoplay = false;
+          el.removeAttribute('autoplay');
+        } catch (error) {
+          /* ignore per-element failures */
+        }
+      });
+    } catch (error) {
+      /* ignore */
+    }
+  }
+
   function ensureStyles() {
     if (document.getElementById('r34pro-loading-style')) return;
     var style = document.createElement('style');
@@ -12,6 +29,11 @@
       '}',
       'html.r34pro-loading body > *:not(#r34pro-loading-shell) {',
       '  visibility: hidden !important;',
+      '}',
+      'html.r34pro-loading video,',
+      'html.r34pro-loading audio {',
+      '  visibility: hidden !important;',
+      '  pointer-events: none !important;',
       '}',
       '#r34pro-loading-shell {',
       '  position: fixed;',
@@ -75,18 +97,33 @@
     return shell;
   }
 
+  window.__r34proPauseAllMedia = pauseAllPageMedia;
+
+  var loadingMediaGuard = null;
+
   window.__r34proShowLoadingShell = function () {
+    pauseAllPageMedia();
     ensureStyles();
     document.documentElement.classList.add('r34pro-loading');
     var shell = ensureShell();
     if (shell) shell.style.display = 'flex';
+    pauseAllPageMedia();
+    if (loadingMediaGuard) clearInterval(loadingMediaGuard);
+    loadingMediaGuard = setInterval(pauseAllPageMedia, 250);
   };
 
   window.__r34proDismissLoadingShell = function () {
     document.documentElement.classList.remove('r34pro-loading');
     var shell = document.getElementById('r34pro-loading-shell');
     if (shell) shell.style.display = 'none';
+    if (loadingMediaGuard) {
+      clearInterval(loadingMediaGuard);
+      loadingMediaGuard = null;
+    }
   };
+
+  window.addEventListener('pagehide', pauseAllPageMedia);
+  window.addEventListener('beforeunload', pauseAllPageMedia);
 
   window.__r34proShowLoadingShell();
 })();
