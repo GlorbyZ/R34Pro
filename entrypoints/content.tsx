@@ -39,6 +39,170 @@ const stopLightboxChromeEvent = (event: React.SyntheticEvent) => {
   event.stopPropagation();
 };
 
+const LightboxChromeButton = ({
+  onClick,
+  title,
+  className,
+  children,
+  disabled,
+}: {
+  onClick: () => void;
+  title: string;
+  className: string;
+  children: React.ReactNode;
+  disabled?: boolean;
+}) => {
+  const actionLockRef = useRef(false);
+
+  const runAction = (event: React.SyntheticEvent) => {
+    event.preventDefault();
+    stopLightboxChromeEvent(event);
+    if (disabled || actionLockRef.current) return;
+    actionLockRef.current = true;
+    onClick();
+    window.setTimeout(() => {
+      actionLockRef.current = false;
+    }, 320);
+  };
+
+  return (
+    <button
+      type="button"
+      title={title}
+      disabled={disabled}
+      onPointerDown={stopLightboxChromeEvent}
+      onTouchStart={stopLightboxChromeEvent}
+      onTouchEnd={runAction}
+      onClick={runAction}
+      className={`lightbox-chrome-btn ${className}`}
+    >
+      {children}
+    </button>
+  );
+};
+
+const LightboxChromeLayer = ({
+  closeLightbox,
+  onDownload,
+  isAndroidApp,
+  lightboxUiVisible,
+  resetLightboxUiTimer,
+  isMobile,
+  isPlaying,
+  slideTick,
+  slideMaxTicks,
+  slideshowInterval,
+  setSlideshowInterval,
+  navigateToPost,
+  loading,
+  setIsPlaying,
+}: {
+  closeLightbox: () => void;
+  onDownload: () => void;
+  isAndroidApp: boolean;
+  lightboxUiVisible: boolean;
+  resetLightboxUiTimer: () => void;
+  isMobile: boolean;
+  isPlaying: boolean;
+  slideTick: number;
+  slideMaxTicks: number;
+  slideshowInterval: number;
+  setSlideshowInterval: (value: number) => void;
+  navigateToPost: (direction: 'prev' | 'next') => void;
+  loading: boolean;
+  setIsPlaying: React.Dispatch<React.SetStateAction<boolean>>;
+}) => (
+  <div
+    className="lightbox-chrome-root fixed inset-0 z-[100000010] pointer-events-none"
+    onClick={(event) => event.stopPropagation()}
+  >
+    <div
+      className={`lightbox-chrome-top lightbox-top-actions pointer-events-auto absolute top-0 right-0 flex gap-2 p-3 transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-70' : 'opacity-100'}`}
+      style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
+    >
+      <LightboxChromeButton
+        onClick={onDownload}
+        title="Download"
+        className="bg-black/75 hover:bg-theme-primary border border-white/15 hover:border-theme-bright text-white hover:text-black rounded-full backdrop-blur-3xl transition-all shadow-2xl group glow-theme cursor-pointer active:scale-95"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="group-hover:-translate-y-0.5 transition-transform"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      </LightboxChromeButton>
+      <LightboxChromeButton
+        onClick={closeLightbox}
+        title="Close Lightbox"
+        className="rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center backdrop-blur-md transition-all border border-white/15 hover:scale-105 active:scale-95 shadow-xl"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </LightboxChromeButton>
+    </div>
+
+    <div
+      className={`lightbox-chrome-bottom lightbox-mobile-controls pointer-events-auto absolute inset-x-3 flex flex-col items-stretch gap-3 transition-all duration-300 ${isAndroidApp && !lightboxUiVisible ? 'lightbox-ui-hidden opacity-0 pointer-events-none' : 'opacity-100'} ${isMobile ? 'translate-y-0' : 'opacity-0 translate-y-4 group-hover/lightbox:opacity-100 group-hover/lightbox:translate-y-0'}`}
+      style={{ bottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (isAndroidApp) resetLightboxUiTimer();
+      }}
+    >
+      {isPlaying && (
+        <div className="lightbox-progress-track">
+          <div className="lightbox-progress-fill" style={{ width: `${(slideTick / slideMaxTicks) * 100}%` }} />
+        </div>
+      )}
+      <div className={`glass-panel bg-black/70 px-4 py-3 rounded-2xl flex items-center justify-center gap-4 shadow-[0_0_30px_rgba(0,0,0,0.8)] border border-white/10 flex-wrap ${isPlaying || (isAndroidApp && !lightboxUiVisible) ? '' : 'animate-in fade-in slide-in-from-bottom-5 duration-500'}`}>
+        <BoutiqueSelect
+          value={slideshowInterval}
+          onChange={setSlideshowInterval}
+          options={[2, 3, 5, 8, 10]}
+          title="Slideshow Interval"
+        />
+        <div className="w-px h-8 bg-white/10 hidden sm:block" />
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            (event.currentTarget as HTMLElement).blur();
+            navigateToPost('prev');
+          }}
+          disabled={loading}
+          title="Previous Post"
+          className="lightbox-control-btn text-white transition-all p-2 rounded-full cursor-pointer min-w-[44px] min-h-[44px]"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setIsPlaying((playing) => !playing);
+          }}
+          title={isPlaying ? 'Pause Slideshow' : 'Start Slideshow'}
+          className={`lightbox-play-btn min-w-[44px] min-h-[44px] ${!isPlaying ? 'opacity-80' : ''}`}
+        >
+          {isPlaying ? (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="ml-0.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            (event.currentTarget as HTMLElement).blur();
+            navigateToPost('next');
+          }}
+          disabled={loading}
+          title="Next Post"
+          className="lightbox-control-btn text-white transition-all p-2 rounded-full cursor-pointer min-w-[44px] min-h-[44px]"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 const PostVideoPlayer = forwardRef(function PostVideoPlayer(
   {
     poster,
@@ -114,36 +278,7 @@ const PostVideoPlayer = forwardRef(function PostVideoPlayer(
   );
 });
 
-const LightboxChromeButton = ({
-  onClick,
-  title,
-  className,
-  children,
-  disabled,
-}: {
-  onClick: () => void;
-  title: string;
-  className: string;
-  children: React.ReactNode;
-  disabled?: boolean;
-}) => (
-  <button
-    type="button"
-    title={title}
-    disabled={disabled}
-    onPointerDown={stopLightboxChromeEvent}
-    onTouchStart={stopLightboxChromeEvent}
-    onClick={(event) => {
-      stopLightboxChromeEvent(event);
-      onClick();
-    }}
-    className={`lightbox-chrome-btn ${className}`}
-  >
-    {children}
-  </button>
-);
-
-const BoutiqueSelect = ({ value, onChange, options, title }: { 
+const BoutiqueSelect = ({ value, onChange, options, title }: {
   value: number, 
   onChange: (v: number) => void, 
   options: number[],
@@ -867,7 +1002,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
     const isChromeTarget = (target: EventTarget | null) => {
       if (!(target instanceof Element)) return false;
-      return !!target.closest('.lightbox-chrome-btn, .lightbox-top-actions, .lightbox-mobile-controls, button, a, input, select');
+      return !!target.closest('.lightbox-chrome-root, .lightbox-chrome-top, .lightbox-chrome-bottom, .lightbox-chrome-btn, .lightbox-top-actions, .lightbox-mobile-controls, button, a, input, select');
     };
 
     const onTouchStart = (event: TouchEvent) => {
@@ -2120,42 +2255,44 @@ const App = ({ initialData }: { initialData: PageData }) => {
         )}
       </div>
 
-      {/* Lightbox Overlay — images only (video reuses the same player in post view) */}
+      {/* Lightbox stage — images only (video reuses the same player in post view) */}
       {data.type === 'post' && lightboxOpen && data.mediaType !== 'video' && (
-        <div 
-          className="fixed inset-0 z-[99999999] bg-black/98 backdrop-blur-2xl flex flex-col items-center justify-center cursor-default animate-in fade-in duration-200 group/lightbox"
-          onClick={(e) => {
-             if (e.target !== e.currentTarget) return;
-             if (isAndroidApp) {
-               if (!lightboxUiVisible) {
-                 resetLightboxUiTimer();
-               } else {
-                 closeLightbox();
-               }
-               return;
-             }
-             closeLightbox();
-          }}
+        <div
+          className="lightbox-stage fixed inset-0 z-[100000000] pointer-events-none animate-in fade-in duration-200 group/lightbox"
         >
+          <button
+            type="button"
+            aria-label="Close lightbox"
+            className="lightbox-stage-backdrop absolute inset-0 bg-black/98 backdrop-blur-2xl pointer-events-auto cursor-default border-0 p-0"
+            onClick={() => {
+              if (isAndroidApp) {
+                if (!lightboxUiVisible) resetLightboxUiTimer();
+                else closeLightbox();
+                return;
+              }
+              closeLightbox();
+            }}
+          />
+
           {loading && (
-             <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-20 transition-all duration-300 pointer-events-none">
-                <div className="void-spinner"></div>
-             </div>
+            <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-20 transition-all duration-300 pointer-events-none">
+              <div className="void-spinner"></div>
+            </div>
           )}
 
           {rateLimited && (
-             <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
-                 <div className="bg-red-500/20 backdrop-blur-xl border border-red-500/50 p-6 rounded-2xl flex flex-col items-center gap-3 text-red-400 font-bold shadow-[0_0_50px_rgba(239,68,68,0.3)]">
-                   <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                   <span>RATE LIMITED</span>
-                   <span className="text-xs text-red-300 font-medium">Pausing for a few seconds...</span>
-                 </div>
-             </div>
+            <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+              <div className="bg-red-500/20 backdrop-blur-xl border border-red-500/50 p-6 rounded-2xl flex flex-col items-center gap-3 text-red-400 font-bold shadow-[0_0_50px_rgba(239,68,68,0.3)]">
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                <span>RATE LIMITED</span>
+                <span className="text-xs text-red-300 font-medium">Pausing for a few seconds...</span>
+              </div>
+            </div>
           )}
 
-          <div 
+          <div
             ref={containerRef}
-            className="relative w-full h-full flex items-center justify-center overflow-hidden"
+            className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
             onMouseDown={(e) => {
               if (scale > 1) {
                 setIsDragging(true);
@@ -2173,180 +2310,51 @@ const App = ({ initialData }: { initialData: PageData }) => {
             onMouseUp={() => setIsDragging(false)}
             onMouseLeave={() => setIsDragging(false)}
           >
-            {isMobile && (
-              <div ref={lightboxGestureRef} className="absolute inset-x-0 top-16 bottom-28 z-[5] mobile-gesture-layer lightbox-media-gesture-layer" aria-hidden />
-            )}
-            <img 
+            <div
+              ref={lightboxGestureRef}
+              className="relative max-w-full max-h-full pointer-events-auto mobile-gesture-layer lightbox-media-gesture-layer touch-manipulation"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isAndroidApp) toggleAndroidLightboxUi();
+              }}
+            >
+              <img
                 ref={imageRef}
-                src={data.highresUrl} 
-                style={{ 
+                src={data.highresUrl}
+                style={{
                   transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-                  maxWidth: '100%', 
-                  maxHeight: '100%', 
+                  maxWidth: '100%',
+                  maxHeight: '100%',
                   objectFit: 'contain',
                   cursor: scale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'crosshair',
                   transformOrigin: 'center center',
                 }}
                 className={`shadow-2xl rounded-lg transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${loading ? 'opacity-50' : 'opacity-100'}`}
                 alt="Highres"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (isAndroidApp) toggleAndroidLightboxUi();
-                }}
                 draggable={false}
               />
-          </div>
-
-          <div className={`absolute top-6 right-6 z-[200] lightbox-top-actions flex gap-3 pointer-events-auto transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-50' : 'opacity-100'}`}>
-            <LightboxChromeButton
-                onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags, data.mediaType)}
-                title="Download Archival Copy"
-                className="bg-black/60 hover:bg-theme-primary border border-white/10 hover:border-theme-bright text-white hover:text-black p-4 rounded-full backdrop-blur-3xl transition-all shadow-2xl group glow-theme cursor-pointer active:opacity-70"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="group-hover:-translate-y-0.5 transition-transform"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            </LightboxChromeButton>
-            <LightboxChromeButton
-               onClick={() => closeLightbox()}
-               title="Close Lightbox (Esc)"
-               className="w-12 h-12 rounded-full bg-white/5 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all border border-white/10 hover:scale-110 active:scale-95 shadow-xl"
-            >
-               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-            </LightboxChromeButton>
-          </div>
-
-          <div 
-             className={`absolute top-6 left-6 flex flex-col items-start gap-4 z-50 lightbox-mobile-controls transition-all duration-300 ${isAndroidApp && !lightboxUiVisible ? 'lightbox-ui-hidden opacity-0 pointer-events-none' : isMobile ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-10 group-hover/lightbox:opacity-100 group-hover/lightbox:translate-x-0'}`}
-             onClick={e => {
-               e.stopPropagation();
-               if (isAndroidApp) resetLightboxUiTimer();
-             }}
-          >
-            {isPlaying && (
-              <div className="lightbox-progress-track">
-                 <div className="lightbox-progress-fill" style={{ width: `${(slideTick / slideMaxTicks) * 100}%` }}></div>
-              </div>
-            )}
-            
-            <div className={`glass-panel bg-black/60 px-6 py-4 rounded-2xl flex items-center gap-8 shadow-[0_0_30px_rgba(0,0,0,0.8)] border border-white/10 ${isPlaying || (isAndroidApp && !lightboxUiVisible) ? '' : 'animate-in fade-in slide-in-from-bottom-5 duration-500'}`}>
-                <BoutiqueSelect 
-                  value={slideshowInterval}
-                  onChange={setSlideshowInterval}
-                  options={[2, 3, 5, 8, 10]}
-                  title="Slideshow Interval"
-                />
-
-               <div className="w-px h-8 bg-white/10"></div>
-               
-                <button
-                    type="button"
-                    onClick={(e) => {
-                       e.stopPropagation();
-                       (e.currentTarget as HTMLElement).blur();
-                       navigateToPost('prev');
-                    }}
-                    disabled={loading}
-                    title="Previous Post (Left Arrow)"
-                    className="lightbox-control-btn text-white transition-all p-2 rounded-full cursor-pointer z-50">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
-                 </button>
-
-                <button 
-                   onClick={(e) => { e.stopPropagation(); setIsPlaying(!isPlaying); }}
-                   title={isPlaying ? "Pause Slideshow (Space)" : "Start Slideshow (Space)"}
-                   className={`lightbox-play-btn ${!isPlaying ? 'opacity-80' : ''}`}>
-                   {isPlaying ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
-                   ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="ml-1"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                   )}
-                </button>
-
-                 <button
-                    type="button"
-                    onClick={(e) => {
-                       e.stopPropagation();
-                       (e.currentTarget as HTMLElement).blur();
-                       navigateToPost('next');
-                    }}
-                    disabled={loading}
-                    title="Next Post (Right Arrow)"
-                    className="lightbox-control-btn text-white transition-all p-2 rounded-full cursor-pointer z-50">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
-                 </button>
-               
-               <div className="w-px h-8 bg-white/10"></div>
-
-               <button 
-                  onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags, data.mediaType)}
-                  className="text-zinc-400 hover:text-white hover:scale-110 active:scale-95 transition-all flex flex-col items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-               </button>
             </div>
           </div>
         </div>
       )}
 
-      {data.type === 'post' && lightboxOpen && data.mediaType === 'video' && (
-        <div
-          className="fixed inset-0 z-[99999999] pointer-events-none"
-          onClick={(e) => {
-            if (e.target !== e.currentTarget) return;
-            if (isAndroidApp) {
-              if (!lightboxUiVisible) resetLightboxUiTimer();
-              else closeLightbox();
-              return;
-            }
-            closeLightbox();
-          }}
-        >
-          <div className={`absolute top-6 right-6 z-[200] lightbox-top-actions flex gap-3 pointer-events-auto transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-50' : 'opacity-100'}`}>
-            <LightboxChromeButton
-              onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags, data.mediaType)}
-              title="Download"
-              className="bg-black/60 hover:bg-theme-primary border border-white/10 hover:border-theme-bright text-white hover:text-black p-4 rounded-full backdrop-blur-3xl transition-all shadow-2xl group glow-theme cursor-pointer active:opacity-70"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            </LightboxChromeButton>
-            <LightboxChromeButton
-              onClick={() => closeLightbox()}
-              title="Close Lightbox"
-              className="w-12 h-12 rounded-full bg-white/5 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur-md transition-all border border-white/10 hover:scale-110 active:scale-95 shadow-xl"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-            </LightboxChromeButton>
-          </div>
-
-          <div
-            className={`absolute inset-x-3 bottom-3 flex flex-col items-stretch gap-3 z-[200] lightbox-mobile-controls pointer-events-auto transition-all duration-300 ${isAndroidApp && !lightboxUiVisible ? 'lightbox-ui-hidden opacity-0 pointer-events-none' : 'opacity-100'}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isAndroidApp) resetLightboxUiTimer();
-            }}
-          >
-            {isPlaying && (
-              <div className="lightbox-progress-track">
-                <div className="lightbox-progress-fill" style={{ width: `${(slideTick / slideMaxTicks) * 100}%` }}></div>
-              </div>
-            )}
-            <div className="glass-panel bg-black/60 px-4 py-3 rounded-2xl flex items-center justify-center gap-4 shadow-[0_0_30px_rgba(0,0,0,0.8)] border border-white/10 flex-wrap">
-              <BoutiqueSelect value={slideshowInterval} onChange={setSlideshowInterval} options={[2, 3, 5, 8, 10]} title="Slideshow Interval" />
-              <div className="w-px h-8 bg-white/10 hidden sm:block" />
-              <button type="button" onClick={(e) => { e.stopPropagation(); navigateToPost('prev'); }} disabled={loading} title="Previous" className="lightbox-control-btn text-white p-2 rounded-full cursor-pointer">
-                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
-              </button>
-              <button type="button" onClick={(e) => { e.stopPropagation(); setIsPlaying(!isPlaying); }} title={isPlaying ? 'Pause slideshow' : 'Start slideshow'} className={`lightbox-play-btn ${!isPlaying ? 'opacity-80' : ''}`}>
-                {isPlaying ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="ml-0.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                )}
-              </button>
-              <button type="button" onClick={(e) => { e.stopPropagation(); navigateToPost('next'); }} disabled={loading} title="Next" className="lightbox-control-btn text-white p-2 rounded-full cursor-pointer">
-                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
-              </button>
-            </div>
-          </div>
-        </div>
+      {data.type === 'post' && lightboxOpen && (
+        <LightboxChromeLayer
+          closeLightbox={closeLightbox}
+          onDownload={() => downloadPost(data.highresUrl, data.id, data.searchTags, data.mediaType)}
+          isAndroidApp={isAndroidApp}
+          lightboxUiVisible={lightboxUiVisible}
+          resetLightboxUiTimer={resetLightboxUiTimer}
+          isMobile={isMobile}
+          isPlaying={isPlaying}
+          slideTick={slideTick}
+          slideMaxTicks={slideMaxTicks}
+          slideshowInterval={slideshowInterval}
+          setSlideshowInterval={setSlideshowInterval}
+          navigateToPost={navigateToPost}
+          loading={loading}
+          setIsPlaying={setIsPlaying}
+        />
       )}
 
       {profileNotice && (
