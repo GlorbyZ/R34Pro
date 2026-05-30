@@ -140,9 +140,7 @@ class MainActivity : AppCompatActivity() {
             injectAssetScript(view, "extension/background.js") {
                 injectAssetCss(view, "extension/content-scripts/content.css") {
                     injectAssetScript(view, "extension/content-scripts/content.js") {
-                        injectMobileCss(view) {
-                            verifyInjection(view)
-                        }
+                        verifyInjection(view)
                     }
                 }
             }
@@ -179,21 +177,6 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (error: Exception) {
             Log.e(TAG, "Failed to inject css: $assetPath", error)
-        }
-    }
-
-    private fun injectMobileCss(view: WebView, onDone: () -> Unit = {}) {
-        val js = """
-            (function() {
-              if (document.getElementById('r34pro-mobile-css')) return;
-              var style = document.createElement('style');
-              style.id = 'r34pro-mobile-css';
-              style.textContent = '@media (max-width: 900px) { .void-navigator-root .w-\\[380px\\] { width: min(100vw, 320px) !important; } }';
-              document.head.appendChild(style);
-            })();
-        """.trimIndent()
-        view.evaluateJavascript(js) {
-            onDone()
         }
     }
 

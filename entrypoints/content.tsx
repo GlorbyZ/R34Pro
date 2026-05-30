@@ -105,7 +105,23 @@ const App = ({ initialData }: { initialData: PageData }) => {
   
   // Gallery Settings (Persisted via &r34_gs=X)
   const [gridSize, setGridSize] = useState<number>(() => {
-    return Number(currentParams.get('r34_gs')) || 4;
+    const fromUrl = Number(currentParams.get('r34_gs'));
+    if (fromUrl) return fromUrl;
+    const mobile =
+      typeof window !== 'undefined' &&
+      (window.matchMedia('(max-width: 900px)').matches || !!(window as any).R34ProAndroid);
+    return mobile ? 2 : 4;
+  });
+
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 900px)').matches || !!(window as any).R34ProAndroid;
+  });
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const mobile =
+      window.matchMedia('(max-width: 900px)').matches || !!(window as any).R34ProAndroid;
+    return !mobile;
   });
   
   // Zoom/Pan State
@@ -129,6 +145,24 @@ const App = ({ initialData }: { initialData: PageData }) => {
   
   useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => { loadingRef.current = loading; }, [loading]);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 900px)');
+    const syncMobile = () => {
+      const mobile = media.matches || !!(window as any).R34ProAndroid;
+      setIsMobile(mobile);
+      document.body.classList.toggle('r34pro-mobile', mobile);
+      if (mobile) setSidebarOpen(false);
+    };
+    syncMobile();
+    media.addEventListener('change', syncMobile);
+    return () => {
+      media.removeEventListener('change', syncMobile);
+      document.body.classList.remove('r34pro-mobile');
+    };
+  }, []);
+
+  const effectiveGridSize = isMobile ? Math.min(gridSize, 2) : gridSize;
 
   const postId = data.type === 'post' ? data.id : null;
 
@@ -227,9 +261,10 @@ const App = ({ initialData }: { initialData: PageData }) => {
       if (slideshowInterval !== 5) target.searchParams.set('r34_si', slideshowInterval.toString());
       if (gridSize !== 4) target.searchParams.set('r34_gs', gridSize.toString());
       if (bulkCount !== 10) target.searchParams.set('r34_bc', bulkCount.toString());
+      if (isMobile) setSidebarOpen(false);
       window.location.href = target.href;
     }
-  }, [data, lightboxOpen, isPlaying, slideshowInterval, gridSize, bulkCount]);
+  }, [data, lightboxOpen, isPlaying, slideshowInterval, gridSize, bulkCount, isMobile]);
 
   const fetchNeighbors = useCallback(async (postId: string, tags: string) => {
     try {
@@ -329,6 +364,82 @@ const App = ({ initialData }: { initialData: PageData }) => {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [navigateToPost, setIsPlaying, setLightboxOpen, isPlaying, lightboxOpen]);
+
+  useEffect(() => {
+    if (!isMobile || data.type !== 'post' || lightboxOpen) return;
+
+    let startX = 0;
+    let startY = 0;
+
+    const onTouchStart = (event: TouchEvent) => {
+      startX = event.touches[0]?.clientX ?? 0;
+      startY = event.touches[0]?.clientY ?? 0;
+    };
+
+    const onTouchEnd = (event: TouchEvent) => {
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+
+      const deltaX = touch.clientX - startX;
+      const deltaY = touch.clientY - startY;
+      if (Math.abs(deltaX) < 72 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
+
+      if (deltaX > 0) navigateToPost('prev');
+      else navigateToPost('next');
+    };
+
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [isMobile, data.type, lightboxOpen, navigateToPost]);
+
+  useEffect(() => {
+    if (!isMobile || !lightboxOpen) return;
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    let initialDistance = 0;
+    let initialScale = scale;
+
+    const getDistance = (touches: TouchList) => {
+      if (touches.length < 2) return 0;
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.hypot(dx, dy);
+    };
+
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches.length === 2) {
+        initialDistance = getDistance(event.touches);
+        initialScale = scale;
+      }
+    };
+
+    const onTouchMove = (event: TouchEvent) => {
+      if (event.touches.length !== 2 || !initialDistance) return;
+      event.preventDefault();
+      const distance = getDistance(event.touches);
+      const nextScale = Math.min(Math.max(1, initialScale * (distance / initialDistance)), 10);
+      setScale(nextScale);
+    };
+
+    const onTouchEnd = () => {
+      initialDistance = 0;
+    };
+
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchmove', onTouchMove, { passive: false });
+    container.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('touchmove', onTouchMove);
+      container.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [isMobile, lightboxOpen, scale]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -480,11 +591,11 @@ const App = ({ initialData }: { initialData: PageData }) => {
   }
 
   return (
-    <div className="w-screen h-screen flex bg-black text-zinc-100 overflow-hidden font-sans fixed inset-0 z-[99999999] void-navigator-root">
+    <div className={`w-screen h-screen flex bg-black text-zinc-100 overflow-hidden font-sans fixed inset-0 z-[99999999] void-navigator-root ${isMobile ? 'flex-col' : 'flex-row'}`}>
        {/* Walkthrough Tutorial Overlay */}
        {showWalkthrough && (
-         <div className="fixed inset-0 z-[1000000000] bg-black/98 backdrop-blur-3xl flex items-center justify-center p-8 md:p-12 animate-in fade-in duration-700">
-            <div className="max-w-xl w-full glass-panel-heavy !p-16 md:!p-24 rounded-[4.5rem] border border-white/10 flex flex-col items-center text-center gap-16 animate-in zoom-in-95 slide-in-from-bottom-20 duration-700 ease-out shadow-[0_100px_200px_rgba(0,0,0,1)]">
+         <div className="fixed inset-0 z-[1000000000] bg-black/98 backdrop-blur-3xl flex items-center justify-center p-4 md:p-12 animate-in fade-in duration-700">
+            <div className="max-w-xl w-full glass-panel-heavy !p-16 md:!p-24 rounded-[4.5rem] border border-white/10 flex flex-col items-center text-center gap-16 animate-in zoom-in-95 slide-in-from-bottom-20 duration-700 ease-out shadow-[0_100px_200px_rgba(0,0,0,1)] mobile-walkthrough-panel">
                
                {/* Step Content Mapping */}
                {walkthroughStep === 0 && (
@@ -525,19 +636,38 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
                {walkthroughStep === 3 && (
                  <>
-                   <div className="flex gap-8 mb-4">
-                      <div className="w-28 h-28 rounded-[2rem] bg-zinc-950 border border-gold/40 flex flex-col items-center justify-center gap-1 shadow-2xl">
+                   {isMobile ? (
+                     <div className="flex gap-4 mb-4">
+                       <div className="w-28 h-28 rounded-[2rem] bg-zinc-950 border border-gold/40 flex flex-col items-center justify-center gap-1 shadow-2xl">
+                         <span className="text-3xl font-black text-gold uppercase !m-0 !p-0 leading-none">SWIPE</span>
+                         <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest leading-none mt-1">Navigate</span>
+                       </div>
+                       <div className="w-28 h-28 rounded-[2rem] bg-zinc-950 border border-gold/40 flex flex-col items-center justify-center gap-1 shadow-2xl">
+                         <span className="text-3xl font-black text-gold uppercase !m-0 !p-0 leading-none">TAP</span>
+                         <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest leading-none mt-1">Controls</span>
+                       </div>
+                     </div>
+                   ) : (
+                     <div className="flex gap-8 mb-4">
+                       <div className="w-28 h-28 rounded-[2rem] bg-zinc-950 border border-gold/40 flex flex-col items-center justify-center gap-1 shadow-2xl">
                          <span className="text-4xl font-black text-gold uppercase !m-0 !p-0 leading-none">A / D</span>
                          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest leading-none mt-1">Navigation</span>
-                      </div>
-                      <div className="w-28 h-28 rounded-[2rem] bg-zinc-950 border border-gold/40 flex flex-col items-center justify-center gap-1 shadow-2xl">
+                       </div>
+                       <div className="w-28 h-28 rounded-[2rem] bg-zinc-950 border border-gold/40 flex flex-col items-center justify-center gap-1 shadow-2xl">
                          <span className="text-4xl font-black text-gold uppercase !m-0 !p-0 leading-none">S / F</span>
                          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest leading-none mt-1">Shortcuts</span>
-                      </div>
-                   </div>
+                       </div>
+                     </div>
+                   )}
                    <div className="space-y-8 px-6">
-                      <h2 className="text-4xl font-black text-white uppercase tracking-tight !m-0 !p-0">Keyboard Shortcuts</h2>
-                      <p className="text-zinc-400 text-lg font-medium leading-relaxed max-w-[90%] mx-auto !m-0 !p-0">Use <strong>A / D</strong> or arrows to move between posts. Press <strong>S</strong> for slideshow and <strong>F</strong> for fullscreen lightbox.</p>
+                      <h2 className="text-4xl font-black text-white uppercase tracking-tight !m-0 !p-0">
+                        {isMobile ? 'Touch Controls' : 'Keyboard Shortcuts'}
+                      </h2>
+                      <p className="text-zinc-400 text-lg font-medium leading-relaxed max-w-[90%] mx-auto !m-0 !p-0">
+                        {isMobile
+                          ? <>Swipe left or right to move between posts. Use the bottom bar for prev/next, fullscreen, and slideshow. Pinch to zoom in lightbox.</>
+                          : <>Use <strong>A / D</strong> or arrows to move between posts. Press <strong>S</strong> for slideshow and <strong>F</strong> for fullscreen lightbox.</>}
+                      </p>
                    </div>
                  </>
                )}
@@ -579,8 +709,18 @@ const App = ({ initialData }: { initialData: PageData }) => {
        )}
       {/* Side Panel (The Obsidian Blade) */}
       {!lightboxOpen && (
-        <div className="w-[380px] h-full flex-shrink-0 bg-black border-r border-white/10 flex flex-col z-[100] relative focus:outline-none">
-        <div className="py-12 flex items-center justify-center gap-6 border-b border-white/5 relative px-6">
+        <>
+        {isMobile && sidebarOpen && (
+          <div
+            className="fixed inset-0 z-[120] bg-black/70 mobile-drawer-backdrop"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+        <div className={`${isMobile
+          ? `fixed inset-y-0 left-0 z-[130] w-[min(100vw,320px)] mobile-sidebar transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`
+          : 'w-[380px] relative'
+        } h-full flex-shrink-0 bg-black border-r border-white/10 flex flex-col z-[100] focus:outline-none`}>
+        <div className={`${isMobile ? 'py-6' : 'py-12'} flex items-center justify-center gap-6 border-b border-white/5 relative px-6`}>
           <div className="flex gap-3">
             <button 
               onClick={toggleExtension}
@@ -851,7 +991,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
           </div>
         </div>
 
-        <div className="p-10 border-t border-white/10 flex gap-6 bg-black">
+        <div className="p-10 border-t border-white/10 flex gap-6 bg-black mobile-sidebar-footer-nav">
            {data.type === 'post' ? (
              <>
                <button
@@ -874,10 +1014,89 @@ const App = ({ initialData }: { initialData: PageData }) => {
            )}
         </div>
       </div>
+        </>
      )}
 
+      {isMobile && !lightboxOpen && (
+        <div className="mobile-top-bar fixed top-0 left-0 right-0 z-[110] bg-black/90 border-b border-white/10 flex items-center px-3 gap-2 backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            className="mobile-touch-btn w-11 h-11 rounded-xl bg-zinc-900 border border-white/10 text-white flex items-center justify-center active:scale-95 transition-all"
+            title="Open menu"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-theme-primary">R34 Pro</div>
+            <div className="text-[10px] text-zinc-500 truncate">
+              {data.type === 'post' ? `Post ${data.id}` : data.searchTags === 'all' ? 'All posts' : data.searchTags.replace(/_/g, ' ')}
+            </div>
+          </div>
+          {data.type === 'post' && (
+            <>
+              <button
+                type="button"
+                onClick={() => setLightboxOpen(true)}
+                className="mobile-touch-btn w-11 h-11 rounded-xl bg-zinc-900 border border-white/10 text-white flex items-center justify-center active:scale-95 transition-all"
+                title="Fullscreen"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPlaying(p => !p)}
+                className={`mobile-touch-btn w-11 h-11 rounded-xl border flex items-center justify-center active:scale-95 transition-all ${isPlaying ? 'bg-theme-primary border-theme-primary text-black' : 'bg-zinc-900 border-white/10 text-white'}`}
+                title={isPlaying ? 'Pause slideshow' : 'Start slideshow'}
+              >
+                {isPlaying ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                )}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {isMobile && !lightboxOpen && data.type === 'post' && (
+        <div className="mobile-bottom-bar fixed bottom-0 left-0 right-0 z-[110] bg-black/95 border-t border-white/10 backdrop-blur-xl px-3 py-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigateToPost('prev')}
+            className="mobile-touch-btn flex-1 min-h-[48px] rounded-2xl bg-zinc-900 border border-white/10 text-white font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all"
+          >
+            Prev
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags)}
+            className="mobile-touch-btn w-12 h-12 rounded-2xl bg-zinc-900 border border-white/10 text-white flex items-center justify-center active:scale-95 transition-all"
+            title="Download"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            className="mobile-touch-btn w-12 h-12 rounded-2xl btn-theme border border-white/10 text-black flex items-center justify-center active:scale-95 transition-all"
+            title="Lightbox"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => navigateToPost('next')}
+            className="mobile-touch-btn flex-1 min-h-[48px] rounded-2xl btn-theme font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all border border-white/10"
+          >
+            Next
+          </button>
+        </div>
+      )}
+
       {/* Main Content Area */}
-      <div className="flex-1 relative flex flex-col items-center justify-center p-4 md:p-8 overflow-hidden bg-zinc-950/50">
+      <div className={`flex-1 relative flex flex-col items-center justify-center overflow-hidden bg-zinc-950/50 mobile-main ${isMobile ? `pt-[calc(3.5rem+env(safe-area-inset-top))] ${data.type === 'post' && !lightboxOpen ? 'pb-[calc(4.75rem+env(safe-area-inset-bottom))]' : 'pb-2'} px-2` : 'p-4 md:p-8'}`}>
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-700 via-zinc-950 to-zinc-950 pointer-events-none"></div>
         {loading && (
            <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 z-20 backdrop-blur-md transition-all duration-300">
@@ -890,7 +1109,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
             {/* Navigation Overlays (Transparent areas that navigate directly) */}
             <div
                onClick={() => navigateToPost('prev')}
-               className="absolute left-0 top-1/2 -translate-y-1/2 w-32 h-[80%] z-10 cursor-pointer group flex items-center justify-center"
+               className="desktop-only-nav-overlay absolute left-0 top-1/2 -translate-y-1/2 w-32 h-[80%] z-10 cursor-pointer group flex items-center justify-center"
                title="Previous Post (Left Arrow)"
             >
                 <div className="bg-black/20 hover:bg-black/40 p-4 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
@@ -899,7 +1118,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
             </div>
             <div
                onClick={() => navigateToPost('next')}
-               className="absolute right-0 top-1/2 -translate-y-1/2 w-32 h-[80%] z-10 cursor-pointer group flex items-center justify-center"
+               className="desktop-only-nav-overlay absolute right-0 top-1/2 -translate-y-1/2 w-32 h-[80%] z-10 cursor-pointer group flex items-center justify-center"
                title="Next Post (Right Arrow)"
             >
                 <div className="bg-black/20 hover:bg-black/40 p-4 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
@@ -907,10 +1126,10 @@ const App = ({ initialData }: { initialData: PageData }) => {
                 </div>
             </div>
 
-             <div className="absolute top-6 right-6 z-10 flex gap-2">
+             <div className={`absolute top-6 right-6 z-10 flex gap-2 ${isMobile ? 'hidden' : ''}`}>
                <button 
                   onClick={() => downloadPost(data.highresUrl, data.id, data.searchTags)}
-                  className="bg-black/60 hover:bg-theme-primary border border-white/10 hover:border-theme-bright text-white hover:text-black p-4 rounded-2xl backdrop-blur-3xl transition-all shadow-2xl group glow-theme cursor-pointer active:opacity-70">
+                  className={`bg-black/60 hover:bg-theme-primary border border-white/10 hover:border-theme-bright text-white hover:text-black rounded-2xl backdrop-blur-3xl transition-all shadow-2xl group glow-theme cursor-pointer active:opacity-70 ${isMobile ? 'p-3' : 'p-4'}`}>
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="group-hover:-translate-y-0.5 transition-transform"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                </button>
             </div>
@@ -937,20 +1156,20 @@ const App = ({ initialData }: { initialData: PageData }) => {
                    alt="Post Image"
                  />
                )}
-               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none flex items-end justify-center pb-8">
-                 <span className="text-white backdrop-blur-md px-6 py-2.5 rounded-full bg-black/60 font-medium text-sm border border-white/10 flex items-center gap-2 shadow-xl translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+               <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none flex items-end justify-center pb-8 ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity duration-300`}>
+                 <span className="text-white backdrop-blur-md px-6 py-2.5 rounded-full bg-black/60 font-medium text-sm border border-white/10 flex items-center gap-2 shadow-xl translate-y-0">
                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-                   Enter Fullscreen Lightbox
+                   {isMobile ? 'Tap for fullscreen' : 'Enter Fullscreen Lightbox'}
                  </span>
                </div>
             </div>
           </>
         ) : (
-          <div className="w-full h-full overflow-y-auto p-4 md:p-8 scrollbar-hide">
+          <div className="w-full h-full overflow-y-auto scrollbar-hide mobile-grid">
              <div 
                className="grid gap-6 p-4 max-w-[1800px] mx-auto w-full overflow-y-auto"
                style={{ 
-                 gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
+                 gridTemplateColumns: `repeat(${effectiveGridSize}, minmax(0, 1fr))`,
                  display: 'grid'
                }}
             >
@@ -958,7 +1177,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
                   <div 
                     key={item.id} 
                     onClick={() => { window.location.href = buildPostViewUrl(item.id, data.searchTags); }}
-                    className="aspect-[3/4] relative rounded-2xl overflow-hidden glass-panel border border-white/5 hover:border-theme-primary/50 transition-all group cursor-pointer shadow-lg hover:scale-[1.05] hover:-translate-y-1 active:scale-95"
+                    className="mobile-grid-item aspect-[3/4] relative rounded-2xl overflow-hidden glass-panel border border-white/5 hover:border-theme-primary/50 transition-all group cursor-pointer shadow-lg hover:scale-[1.05] hover:-translate-y-1 active:scale-95"
                   >
                      <img 
                        src={item.thumbUrl} 
@@ -1107,7 +1326,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
           </div>
 
           <div 
-             className="absolute top-6 left-6 flex flex-col items-start gap-4 opacity-0 -translate-x-10 group-hover/lightbox:opacity-100 group-hover/lightbox:translate-x-0 transition-all duration-300 z-50"
+             className={`absolute top-6 left-6 flex flex-col items-start gap-4 z-50 lightbox-mobile-controls ${isMobile ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-10 group-hover/lightbox:opacity-100 group-hover/lightbox:translate-x-0'} transition-all duration-300`}
              onClick={e => e.stopPropagation()}
           >
             {isPlaying && (

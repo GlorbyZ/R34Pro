@@ -1,0 +1,99 @@
+/* Mobile / Android layout overrides */
+@media (max-width: 900px) {
+  body.r34pro-mobile.void-active,
+  body.r34pro-mobile.void-active html {
+    touch-action: pan-y;
+  }
+
+  .void-navigator-root .mobile-top-bar {
+    padding-top: env(safe-area-inset-top, 0px);
+    height: calc(3.5rem + env(safe-area-inset-top, 0px));
+  }
+
+  .void-navigator-root .mobile-bottom-bar {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .void-navigator-root .mobile-drawer-backdrop {
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  .void-navigator-root .mobile-sidebar {
+    box-shadow: 24px 0 80px rgba(0, 0, 0, 0.85);
+  }
+
+  .void-navigator-root .mobile-main {
+    min-height: 0;
+  }
+
+  .void-navigator-root .mobile-grid {
+    gap: 0.75rem !important;
+    padding: 0.5rem !important;
+  }
+
+  .void-navigator-root .mobile-grid-item {
+    border-radius: 1rem !important;
+  }
+
+  .void-navigator-root .mobile-grid-item .absolute.inset-x-0.bottom-0 {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .void-navigator-root .mobile-touch-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .void-navigator-root .mobile-walkthrough-panel {
+    padding: 2rem 1.25rem !important;
+    border-radius: 2rem !important;
+    gap: 2rem !important;
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+
+  .void-navigator-root .mobile-walkthrough-panel h2 {
+    font-size: 1.75rem !important;
+  }
+
+  .void-navigator-root .mobile-walkthrough-panel p {
+    font-size: 0.95rem !important;
+  }
+
+  .void-navigator-root .lightbox-mobile-controls {
+    opacity: 1 !important;
+    transform: none !important;
+    left: 0.75rem !important;
+    right: 0.75rem !important;
+    top: auto !important;
+    bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px)) !important;
+    width: auto !important;
+  }
+
+  .void-navigator-root .lightbox-mobile-controls .glass-panel {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.75rem !important;
+    padding: 0.75rem 1rem !important;
+  }
+
+  .void-navigator-root .mobile-swipe-hint {
+    opacity: 0.35;
+  }
+
+  .void-navigator-root .desktop-only-nav-overlay {
+    display: none !important;
+  }
+
+  .void-navigator-root .mobile-sidebar-footer-nav {
+    display: none !important;
+  }
+
+  .void-navigator-root input,
+  .void-navigator-root button {
+    font-size: 16px !important;
+  }
+}
