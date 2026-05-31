@@ -20,19 +20,4 @@
     '--r34-ui-scale',
     'clamp(1, calc(100vw / 360), 1.35)'
   );
-
-  var syncOrientation = function () {
-    var landscape = window.matchMedia('(orientation: landscape)').matches;
-    document.documentElement.classList.toggle('r34pro-landscape', landscape);
-    document.documentElement.style.setProperty(
-      '--r34-ui-scale',
-      landscape
-        ? 'clamp(0.92, calc(100vw / 640), 1.15)'
-        : 'clamp(1, calc(100vw / 360), 1.35)'
-    );
-  };
-
-  syncOrientation();
-  window.addEventListener('orientationchange', syncOrientation);
-  window.addEventListener('resize', syncOrientation);
 })();

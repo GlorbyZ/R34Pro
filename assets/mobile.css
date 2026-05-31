@@ -1,30 +1,3 @@
-/* Shared mobile layout insets (portrait defaults) */
-html.r34pro-android,
-body.r34pro-mobile.void-active {
-  --r34-top-inset: calc(4.25rem + env(safe-area-inset-top, 0px));
-  --r34-bottom-inset: calc(5rem + env(safe-area-inset-bottom, 0px));
-  --r34-side-inset: max(0.5rem, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
-}
-
-.void-navigator-root .mobile-main-inset {
-  padding-top: var(--r34-top-inset);
-  padding-left: max(0.5rem, env(safe-area-inset-left, 0px));
-  padding-right: max(0.5rem, env(safe-area-inset-right, 0px));
-  padding-bottom: 0.5rem;
-}
-
-.void-navigator-root .mobile-main-post-inset {
-  padding-bottom: var(--r34-bottom-inset);
-}
-
-.void-navigator-root .mobile-post-media {
-  max-height: min(85vh, 100%);
-}
-
-.void-navigator-root .mobile-post-lightbox .mobile-post-media {
-  max-height: min(85vh, 100%);
-}
-
 /* Android app: uniform sizing across devices */
 html.r34pro-android {
   -webkit-text-size-adjust: 100%;
@@ -139,53 +112,9 @@ html.r34pro-android .void-navigator-root .lightbox-mobile-controls {
   left: 0.75rem !important;
   right: 0.75rem !important;
   top: auto !important;
-  bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
+  bottom: calc(6rem + env(safe-area-inset-bottom, 0px)) !important;
   width: auto !important;
   transition: opacity 0.3s ease, transform 0.3s ease !important;
-}
-
-html.r34pro-android .void-navigator-root .lightbox-chrome-root {
-  z-index: 100000010 !important;
-}
-
-html.r34pro-android .void-navigator-root .lightbox-chrome-top {
-  z-index: 100000011 !important;
-  pointer-events: auto !important;
-  touch-action: manipulation;
-}
-
-html.r34pro-android .void-navigator-root .lightbox-chrome-top .lightbox-chrome-btn {
-  min-width: 56px !important;
-  min-height: 56px !important;
-  padding: 0.85rem !important;
-  pointer-events: auto !important;
-  touch-action: manipulation;
-}
-
-html.r34pro-android .void-navigator-root .lightbox-top-actions {
-  z-index: 100000011 !important;
-  pointer-events: auto !important;
-  touch-action: manipulation;
-}
-
-html.r34pro-android .void-navigator-root .lightbox-top-actions .lightbox-chrome-btn {
-  min-width: 56px !important;
-  min-height: 56px !important;
-  pointer-events: auto !important;
-  touch-action: manipulation;
-}
-
-html.r34pro-android .void-navigator-root .lightbox-media-gesture-layer {
-  position: relative !important;
-  inset: auto !important;
-  top: auto !important;
-  bottom: auto !important;
-  left: auto !important;
-  right: auto !important;
-  width: auto !important;
-  height: auto !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
 }
 
 html.r34pro-android .void-navigator-root .lightbox-mobile-controls.lightbox-ui-hidden {
@@ -194,14 +123,12 @@ html.r34pro-android .void-navigator-root .lightbox-mobile-controls.lightbox-ui-h
   transform: translateY(12px) !important;
 }
 
-html.r34pro-android .void-navigator-root .lightbox-mobile-controls .glass-panel,
-html.r34pro-android .void-navigator-root .lightbox-slideshow-panel {
+html.r34pro-android .void-navigator-root .lightbox-mobile-controls .glass-panel {
   width: 100%;
   justify-content: center;
   flex-wrap: wrap;
   gap: 0.85rem !important;
   padding: 0.85rem 1rem !important;
-  overflow: visible !important;
 }
 
 html.r34pro-android .void-navigator-root .desktop-only-nav-overlay {
@@ -307,7 +234,7 @@ html.r34pro-android .void-navigator-root .mobile-top-bar .text-\[10px\] {
     left: 0.75rem !important;
     right: 0.75rem !important;
     top: auto !important;
-    bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
+    bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px)) !important;
     width: auto !important;
   }
 
@@ -322,13 +249,6 @@ html.r34pro-android .void-navigator-root .mobile-top-bar .text-\[10px\] {
     flex-wrap: wrap;
     gap: 0.75rem !important;
     padding: 0.75rem 1rem !important;
-    overflow: visible !important;
-  }
-
-  .void-navigator-root .lightbox-chrome-bottom,
-  .void-navigator-root .lightbox-slideshow-panel,
-  .void-navigator-root .boutique-select {
-    overflow: visible !important;
   }
 
   .void-navigator-root .mobile-swipe-hint {
@@ -347,188 +267,4 @@ html.r34pro-android .void-navigator-root .mobile-top-bar .text-\[10px\] {
   .void-navigator-root button {
     font-size: 16px !important;
   }
-}
-
-/* Landscape mobile — compact chrome, wider grids, side safe areas */
-@media (orientation: landscape) and (max-width: 900px),
-       (orientation: landscape) and (max-height: 520px) {
-  html.r34pro-android,
-  body.r34pro-mobile.void-active,
-  html.r34pro-landscape {
-    --r34-top-inset: calc(2.75rem + env(safe-area-inset-top, 0px));
-    --r34-bottom-inset: calc(3.25rem + env(safe-area-inset-bottom, 0px));
-    --r34-side-inset: max(0.75rem, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
-  }
-
-  .void-navigator-root .mobile-top-bar {
-    height: calc(2.75rem + env(safe-area-inset-top, 0px)) !important;
-    padding-top: env(safe-area-inset-top, 0px) !important;
-    padding-left: max(0.75rem, env(safe-area-inset-left, 0px)) !important;
-    padding-right: max(0.75rem, env(safe-area-inset-right, 0px)) !important;
-    gap: 0.35rem !important;
-  }
-
-  .void-navigator-root .mobile-top-bar-btn {
-    width: 2.5rem !important;
-    height: 2.5rem !important;
-    min-width: 2.5rem !important;
-    min-height: 2.5rem !important;
-  }
-
-  .void-navigator-root .mobile-top-bar-subtitle {
-    display: none;
-  }
-
-  .void-navigator-root .mobile-top-bar-title .text-\[11px\] {
-    font-size: 0.65rem !important;
-    letter-spacing: 0.14em !important;
-  }
-
-  .void-navigator-root .mobile-bottom-bar {
-    padding-top: 0.45rem !important;
-    padding-bottom: max(0.45rem, env(safe-area-inset-bottom, 0px)) !important;
-    padding-left: max(0.75rem, env(safe-area-inset-left, 0px)) !important;
-    padding-right: max(0.75rem, env(safe-area-inset-right, 0px)) !important;
-    gap: 0.35rem !important;
-  }
-
-  .void-navigator-root .mobile-bottom-bar-btn {
-    min-height: 2.5rem !important;
-    font-size: 0.65rem !important;
-    border-radius: 0.85rem !important;
-  }
-
-  .void-navigator-root .mobile-bottom-bar .mobile-touch-btn.w-12 {
-    width: 2.5rem !important;
-    height: 2.5rem !important;
-    min-width: 2.5rem !important;
-    min-height: 2.5rem !important;
-    border-radius: 0.85rem !important;
-  }
-
-  .void-navigator-root .mobile-main-inset {
-    padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
-    padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
-  }
-
-  .void-navigator-root .mobile-post-media,
-  .void-navigator-root .mobile-post-lightbox .mobile-post-media {
-    max-height: min(calc(100vh - var(--r34-top-inset) - var(--r34-bottom-inset) - 0.5rem), 96vh) !important;
-  }
-
-  .void-navigator-root .mobile-post-lightbox .mobile-post-media {
-    max-height: min(92vh, calc(100vh - 1rem)) !important;
-  }
-
-  .void-navigator-root .mobile-grid-item {
-    aspect-ratio: 1 / 1 !important;
-  }
-
-  .void-navigator-root .mobile-grid {
-    padding: 0.35rem !important;
-  }
-
-  .void-navigator-root .mobile-grid > .grid {
-    gap: 0.5rem !important;
-    padding: 0.35rem !important;
-  }
-
-  .void-navigator-root .mobile-search-shell {
-    flex-direction: row !important;
-    flex-wrap: wrap !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 1rem 1.5rem !important;
-    overflow-y: auto !important;
-    overscroll-behavior: contain;
-    padding-left: max(1rem, env(safe-area-inset-left, 0px)) !important;
-    padding-right: max(1rem, env(safe-area-inset-right, 0px)) !important;
-  }
-
-  .void-navigator-root .mobile-search-hero {
-    flex-direction: row !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    gap: 1rem !important;
-    max-width: none !important;
-    width: auto !important;
-    flex: 0 1 auto !important;
-  }
-
-  .void-navigator-root .mobile-search-logo {
-    width: 4.5rem !important;
-    height: 4.5rem !important;
-  }
-
-  .void-navigator-root .mobile-search-copy {
-    text-align: left !important;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .void-navigator-root .mobile-search-copy h1 {
-    font-size: 1.15rem !important;
-  }
-
-  .void-navigator-root .mobile-search-copy p {
-    font-size: 0.75rem !important;
-  }
-
-  .void-navigator-root .mobile-search-form {
-    max-width: min(28rem, 100%) !important;
-    flex: 1 1 16rem !important;
-    min-width: min(100%, 16rem) !important;
-  }
-
-  .void-navigator-root .mobile-account-page {
-    max-width: none !important;
-    padding: 1rem max(1rem, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)) !important;
-  }
-
-  .void-navigator-root .lightbox-chrome-top {
-    padding-left: max(0.75rem, env(safe-area-inset-right, 0px), env(safe-area-inset-left, 0px)) !important;
-    padding-right: max(0.75rem, env(safe-area-inset-right, 0px), env(safe-area-inset-left, 0px)) !important;
-  }
-
-  .void-navigator-root .lightbox-chrome-top .lightbox-chrome-btn {
-    min-width: 48px !important;
-    min-height: 48px !important;
-    padding: 0.65rem !important;
-  }
-
-  .void-navigator-root .lightbox-chrome-bottom,
-  .void-navigator-root .lightbox-mobile-controls {
-    left: max(0.75rem, env(safe-area-inset-left, 0px)) !important;
-    right: max(0.75rem, env(safe-area-inset-right, 0px)) !important;
-    bottom: max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
-  }
-
-  .void-navigator-root .lightbox-mobile-controls .glass-panel {
-    padding: 0.55rem 0.75rem !important;
-    gap: 0.5rem !important;
-  }
-
-  .void-navigator-root .lightbox-progress-track {
-    width: min(100%, 320px) !important;
-    margin: 0 auto;
-  }
-
-  .void-navigator-root .mobile-walkthrough-panel {
-    max-height: 88vh !important;
-    padding: 1.25rem 1rem !important;
-    gap: 1rem !important;
-    border-radius: 1.5rem !important;
-  }
-
-  .void-navigator-root .mobile-walkthrough-panel h2 {
-    font-size: 1.35rem !important;
-  }
-
-  .void-navigator-root .mobile-sidebar {
-    width: min(85vw, 18rem) !important;
-  }
-}
-
-html.r34pro-android.r34pro-landscape .void-navigator-root {
-  font-size: clamp(14px, 2.8vw, 17px);
 }

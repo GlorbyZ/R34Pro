@@ -17,8 +17,6 @@ import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONObject
 
@@ -28,34 +26,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pinLock: PinLockController
     private var extensionInjectedForUrl: String? = null
     private var pendingShowPinOnResume = false
-    private var immersiveRequested = false
-
-    private val pauseMediaJs = """
-        (function() {
-          if (window.__r34proPauseAllMedia) {
-            window.__r34proPauseAllMedia();
-            return;
-          }
-          document.querySelectorAll('video,audio').forEach(function(el) {
-            try {
-              el.pause();
-              el.muted = true;
-              el.autoplay = false;
-              el.removeAttribute('autoplay');
-            } catch (e) {}
-          });
-        })();
-    """.trimIndent()
-
-    private val showLoadingShellJs = """
-        (function() {
-          if (window.__r34proShowLoadingShell) {
-            window.__r34proShowLoadingShell();
-            return;
-          }
-          document.documentElement.classList.add('r34pro-loading');
-        })();
-    """.trimIndent()
 
     private val assetLoader: WebViewAssetLoader by lazy {
         WebViewAssetLoader.Builder()
@@ -117,7 +87,6 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url.toString()
                 if (isRule34Url(url)) {
-                    pausePageMedia(view)
                     showLoadingShell(view)
                     return false
                 }
@@ -126,7 +95,6 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 extensionInjectedForUrl = null
-                pausePageMedia(view)
                 showLoadingShell(view)
                 injectEarlyBootstrap(view)
                 super.onPageStarted(view, url, favicon)
@@ -177,43 +145,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onPause() {
-        webView.onPause()
-        pausePageMedia(webView)
-        super.onPause()
-        sessionUnlocked = false
-        pendingShowPinOnResume = true
-    }
-
     override fun onResume() {
         super.onResume()
-        webView.onResume()
         if (!sessionUnlocked || pendingShowPinOnResume) {
             pinLock.show()
         }
-        if (immersiveRequested) {
-            applyImmersiveMode(true)
-        }
     }
 
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && immersiveRequested) {
-            applyImmersiveMode(true)
-        }
-    }
-
-    fun applyImmersiveMode(enabled: Boolean) {
-        immersiveRequested = enabled
-        WindowCompat.setDecorFitsSystemWindows(window, !enabled)
-        val controller = WindowCompat.getInsetsController(window, window.decorView)
-        if (enabled) {
-            controller.hide(WindowInsetsCompat.Type.systemBars())
-            controller.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        } else {
-            controller.show(WindowInsetsCompat.Type.systemBars())
-        }
+    override fun onPause() {
+        super.onPause()
+        sessionUnlocked = false
+        pendingShowPinOnResume = true
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -315,13 +257,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun pausePageMedia(view: WebView) {
-        view.evaluateJavascript(pauseMediaJs, null)
-    }
-
     private fun showLoadingShell(view: WebView) {
-        pausePageMedia(view)
-        view.evaluateJavascript(showLoadingShellJs, null)
         injectScript(view, "r34pro/loading-shell.js")
     }
 

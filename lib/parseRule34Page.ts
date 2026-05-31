@@ -52,22 +52,6 @@ export interface AccountNavLink {
   description?: string;
 }
 
-export interface AccountStat {
-  label: string;
-  value: string;
-  href?: string;
-}
-
-export interface AccountProfile {
-  username: string;
-  stats: AccountStat[];
-  recentFavorites: ListItem[];
-  recentUploads: ListItem[];
-  mailUrl?: string;
-  favoritesUrl?: string;
-  postsUrl?: string;
-}
-
 export interface AccountData {
   type: 'account';
   variant: 'home' | 'login' | 'profile' | 'register' | 'options' | 'other';
@@ -75,7 +59,6 @@ export interface AccountData {
   userId?: string;
   links: AccountNavLink[];
   title: string;
-  profile?: AccountProfile;
   bodyHtml?: string;
 }
 
@@ -212,14 +195,10 @@ export function parseRule34Page(doc: Document, searchParams?: URLSearchParams): 
     };
   }
 
-  const listRoot = findListRoot(doc);
-  if (listRoot) {
+  const thumbContainer = doc.querySelector('.image-list');
+  if (thumbContainer) {
     const items: ListItem[] = [];
-    const thumbs =
-      listRoot === doc.body
-        ? doc.querySelectorAll('span.thumb')
-        : listRoot.querySelectorAll('span.thumb');
-    thumbs.forEach((thumb) => {
+    thumbContainer.querySelectorAll('span.thumb').forEach((thumb) => {
       const item = parseListThumb(thumb);
       if (item) items.push(item);
     });
@@ -239,21 +218,6 @@ export function parseRule34Page(doc: Document, searchParams?: URLSearchParams): 
       favoritesUserId,
       listTitle: isFavorites ? 'My Favorites' : undefined,
     };
-  }
-
-  return null;
-}
-
-function findListRoot(doc: Document): Element | null {
-  const direct =
-    doc.querySelector('.image-list') ??
-    doc.querySelector('#post-list') ??
-    doc.querySelector('#content .image-list');
-  if (direct) return direct;
-
-  const isListPage = doc.querySelector('#post-list, .pagination, #paginator') != null;
-  if (isListPage && doc.querySelectorAll('span.thumb').length > 0) {
-    return doc.body;
   }
 
   return null;
@@ -348,14 +312,10 @@ function parseAccountPage(doc: Document, sp: URLSearchParams): AccountData | nul
   }
 
   const userIndex = doc.querySelector('#user-index');
-  const content = doc.querySelector('#content');
-  const profileFromContent = content ? parseAccountProfileFromContent(content) : undefined;
-
   if (userIndex) {
     const heading = userIndex.querySelector('h2')?.textContent?.trim() ?? '';
     const isLoggedIn = !/not logged in/i.test(heading);
     const links = extractAccountLinksFromDom(userIndex);
-    if (content) links.push(...extractAccountLinksFromDom(content).filter((l) => !links.some((x) => x.href === l.href)));
 
     let userId: string | undefined;
     const favoritesLink = links.find((l) => l.href.includes('page=favorites'));
@@ -366,124 +326,30 @@ function parseAccountPage(doc: Document, sp: URLSearchParams): AccountData | nul
         userId = undefined;
       }
     }
-    if (!userId && profileFromContent?.favoritesUrl) {
-      try {
-        userId = new URL(profileFromContent.favoritesUrl, RULE34_ORIGIN).searchParams.get('id') ?? undefined;
-      } catch {
-        userId = undefined;
-      }
-    }
 
     return {
       type: 'account',
       variant: 'home',
-      isLoggedIn: isLoggedIn || !!profileFromContent,
-      userId: userId ?? profileFromContent?.userId,
-      links,
-      title: doc.title,
-      profile: profileFromContent,
-    };
-  }
-
-  if (content && pageParamIsAccount(sp)) {
-    const links = extractAccountLinksFromDom(content);
-    let userId: string | undefined;
-    if (profileFromContent?.userId) userId = profileFromContent.userId;
-    else if (profileFromContent?.favoritesUrl) {
-      try {
-        userId = new URL(profileFromContent.favoritesUrl, RULE34_ORIGIN).searchParams.get('id') ?? undefined;
-      } catch {
-        userId = undefined;
-      }
-    }
-
-    return {
-      type: 'account',
-      variant: profileFromContent ? (variant === 'home' || variant === 'profile' ? variant : 'profile') : variant,
-      isLoggedIn: !!profileFromContent || !doc.body.textContent?.includes('You are not logged in'),
+      isLoggedIn,
       userId,
       links,
       title: doc.title,
-      profile: profileFromContent,
-      bodyHtml: profileFromContent ? undefined : content.innerHTML,
+    };
+  }
+
+  const content = doc.querySelector('#content');
+  if (content && pageParamIsAccount(sp)) {
+    return {
+      type: 'account',
+      variant,
+      isLoggedIn: !doc.body.textContent?.includes('You are not logged in'),
+      links: extractAccountLinksFromDom(content),
+      title: doc.title,
+      bodyHtml: content.innerHTML,
     };
   }
 
   return null;
-}
-
-function parseAccountProfileFromContent(content: Element): (AccountProfile & { userId?: string }) | undefined {
-  const heading = content.querySelector(':scope > h2, h2')?.textContent?.trim() ?? '';
-  if (!heading || /not logged in/i.test(heading)) return undefined;
-
-  const stats: AccountStat[] = [];
-  let mailUrl: string | undefined;
-  let favoritesUrl: string | undefined;
-  let postsUrl: string | undefined;
-  let userId: string | undefined;
-
-  content.querySelectorAll('table.highlightable tr').forEach((row) => {
-    const cells = row.querySelectorAll('td');
-    if (cells.length < 2) return;
-
-    const label = (cells[0].querySelector('strong')?.textContent ?? cells[0].textContent ?? '')
-      .trim()
-      .replace(/:$/, '');
-    if (!label) return;
-
-    const valueCell = cells[cells.length - 1];
-    const anchor = valueCell.querySelector('a') as HTMLAnchorElement | null;
-    const value = (anchor?.textContent ?? valueCell.textContent ?? '').trim();
-    const href = anchor ? toAbsoluteRule34Url(anchor.getAttribute('href') ?? '') ?? undefined : undefined;
-
-    stats.push({ label, value, href });
-
-    if (/contact|mail/i.test(label) && href) mailUrl = href;
-    if (/^favorites$/i.test(label) && href) {
-      favoritesUrl = href;
-      try {
-        userId = new URL(href, RULE34_ORIGIN).searchParams.get('id') ?? undefined;
-      } catch {
-        userId = undefined;
-      }
-    }
-    if (/^posts$/i.test(label) && href) postsUrl = href;
-  });
-
-  if (stats.length === 0) return undefined;
-
-  const recentFavorites = parseImageListSection(content, 'Recent Favorites');
-  const recentUploads = parseImageListSection(content, 'Recent Uploads');
-
-  return {
-    username: heading,
-    stats,
-    recentFavorites,
-    recentUploads,
-    mailUrl,
-    favoritesUrl,
-    postsUrl,
-    userId,
-  };
-}
-
-function parseImageListSection(root: Element, sectionTitle: string): ListItem[] {
-  const items: ListItem[] = [];
-  const headings = Array.from(root.querySelectorAll('h4'));
-  const heading = headings.find((h) => h.textContent?.trim().toLowerCase().includes(sectionTitle.toLowerCase()));
-  if (!heading) return items;
-
-  const listRoot =
-    heading.parentElement?.querySelector('.image-list') ??
-    heading.nextElementSibling?.querySelector('.image-list') ??
-    heading.nextElementSibling;
-
-  if (!listRoot) return items;
-  listRoot.querySelectorAll('span.thumb').forEach((thumb) => {
-    const item = parseListThumb(thumb);
-    if (item) items.push(item);
-  });
-  return items;
 }
 
 function pageParamIsAccount(sp: URLSearchParams): boolean {
