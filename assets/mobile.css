@@ -25,6 +25,20 @@ body.r34pro-mobile.void-active {
   max-height: min(85vh, 100%);
 }
 
+/*
+ * R34 Pro mobile-first layout system
+ * Android WebView + narrow viewports share these tokens and safe-area rules.
+ */
+:root {
+  --r34-touch-min: 44px;
+  --r34-bar-height: 3.5rem;
+  --r34-bar-height-landscape: 2.75rem;
+  --r34-grid-gap: 0.75rem;
+  --r34-grid-gap-landscape: 0.55rem;
+  --r34-chrome-z: 110;
+  --r34-lightbox-z: 100000010;
+}
+
 /* Android app: uniform sizing across devices */
 html.r34pro-android {
   -webkit-text-size-adjust: 100%;

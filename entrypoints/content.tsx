@@ -1,6 +1,23 @@
-import React, { useState, useEffect, useRef, useCallback, forwardRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../assets/main.css';
+import { LightboxChromeLayer } from '../components/lightbox/LightboxChrome';
+import { PostVideoPlayer } from '../components/media/PostVideoPlayer';
+import { BoutiqueSelect } from '../components/ui/BoutiqueSelect';
+import {
+  ACCOUNT_SESSION_DEFER_MS,
+  LIGHTBOX_UI_HIDE_MS,
+  MAX_ZOOM_SCALE,
+  MIN_PINCH_DISTANCE,
+  VIDEO_SLIDESHOW_RATIO,
+} from '../lib/constants';
+import {
+  defaultGridSize,
+  effectiveGridColumns,
+  isAndroidApp as detectAndroidApp,
+  isLandscape as detectLandscape,
+  isMobileViewport,
+} from '../lib/platform';
 import {
   RULE34_ORIGIN,
   buildPostViewUrl,
@@ -20,335 +37,10 @@ import {
   type AccountSession,
 } from '../lib/rule34Profile';
 
-
-
 /**
- * REFRAMER CORE ARCHITECTURE
- * 
- * 1. Physical Key Relay: This extension prioritizes 1:1 behavioral parity with Rule34.
- *    Instead of complex SPA logic, it uses standard window.location.href reloads.
- * 2. State Persistence: UI states (Slideshow, Lightbox, Grid) are stored in sessionStorage
- *    to survive reloads and maintain seamless user experience.
- * 3. Atomic Parsing: The site is parsed once per load into a PageData object.
+ * R34 Pro — mobile-first gallery shell over Rule34.
+ * Navigation uses full page reloads with URL state tags (r34_lb, r34_ss, etc.).
  */
-const VIDEO_SLIDESHOW_RATIO = 0.65;
-const MAX_ZOOM_SCALE = 4;
-const MIN_PINCH_DISTANCE = 32;
-
-const stopLightboxChromeEvent = (event: React.SyntheticEvent) => {
-  event.stopPropagation();
-};
-
-const LightboxChromeButton = ({
-  onClick,
-  title,
-  className,
-  children,
-  disabled,
-}: {
-  onClick: () => void;
-  title: string;
-  className: string;
-  children: React.ReactNode;
-  disabled?: boolean;
-}) => {
-  const actionLockRef = useRef(false);
-
-  const runAction = (event: React.SyntheticEvent) => {
-    event.preventDefault();
-    stopLightboxChromeEvent(event);
-    if (disabled || actionLockRef.current) return;
-    actionLockRef.current = true;
-    onClick();
-    window.setTimeout(() => {
-      actionLockRef.current = false;
-    }, 320);
-  };
-
-  return (
-    <button
-      type="button"
-      title={title}
-      disabled={disabled}
-      onPointerDown={stopLightboxChromeEvent}
-      onTouchStart={stopLightboxChromeEvent}
-      onTouchEnd={runAction}
-      onClick={runAction}
-      className={`lightbox-chrome-btn ${className}`}
-    >
-      {children}
-    </button>
-  );
-};
-
-const LightboxChromeLayer = ({
-  closeLightbox,
-  onDownload,
-  isAndroidApp,
-  lightboxUiVisible,
-  resetLightboxUiTimer,
-  isMobile,
-  isPlaying,
-  slideTick,
-  slideMaxTicks,
-  slideshowInterval,
-  setSlideshowInterval,
-  navigateToPost,
-  loading,
-  setIsPlaying,
-}: {
-  closeLightbox: () => void;
-  onDownload: () => void;
-  isAndroidApp: boolean;
-  lightboxUiVisible: boolean;
-  resetLightboxUiTimer: () => void;
-  isMobile: boolean;
-  isPlaying: boolean;
-  slideTick: number;
-  slideMaxTicks: number;
-  slideshowInterval: number;
-  setSlideshowInterval: (value: number) => void;
-  navigateToPost: (direction: 'prev' | 'next') => void;
-  loading: boolean;
-  setIsPlaying: React.Dispatch<React.SetStateAction<boolean>>;
-}) => (
-  <div
-    className="lightbox-chrome-root fixed inset-0 z-[100000010] pointer-events-none"
-    onClick={(event) => event.stopPropagation()}
-  >
-    <div
-      className={`lightbox-chrome-top lightbox-top-actions pointer-events-auto absolute top-0 right-0 flex gap-2 p-3 transition-opacity duration-300 ${isAndroidApp && !lightboxUiVisible ? 'opacity-70' : 'opacity-100'}`}
-      style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
-    >
-      <LightboxChromeButton
-        onClick={onDownload}
-        title="Download"
-        className="bg-black/75 hover:bg-theme-primary border border-white/15 hover:border-theme-bright text-white hover:text-black rounded-full backdrop-blur-3xl transition-all shadow-2xl group glow-theme cursor-pointer active:scale-95"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="group-hover:-translate-y-0.5 transition-transform"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-      </LightboxChromeButton>
-      <LightboxChromeButton
-        onClick={closeLightbox}
-        title="Close Lightbox"
-        className="rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center backdrop-blur-md transition-all border border-white/15 hover:scale-105 active:scale-95 shadow-xl"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-      </LightboxChromeButton>
-    </div>
-
-    <div
-      className={`lightbox-chrome-bottom lightbox-mobile-controls pointer-events-auto absolute inset-x-3 flex flex-col items-stretch gap-3 transition-all duration-300 overflow-visible ${isAndroidApp && !lightboxUiVisible ? 'lightbox-ui-hidden opacity-0 pointer-events-none' : 'opacity-100'} ${isMobile ? 'translate-y-0' : 'opacity-0 translate-y-4 group-hover/lightbox:opacity-100 group-hover/lightbox:translate-y-0'}`}
-      style={{ bottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
-      onClick={(event) => {
-        event.stopPropagation();
-        if (isAndroidApp) resetLightboxUiTimer();
-      }}
-    >
-      {isPlaying && (
-        <div className="lightbox-progress-track">
-          <div className="lightbox-progress-fill" style={{ width: `${(slideTick / slideMaxTicks) * 100}%` }} />
-        </div>
-      )}
-      <div className={`lightbox-slideshow-panel glass-panel bg-black/70 px-4 py-3 rounded-2xl flex items-center justify-center gap-4 shadow-[0_0_30px_rgba(0,0,0,0.8)] border border-white/10 flex-wrap overflow-visible ${isPlaying || (isAndroidApp && !lightboxUiVisible) ? '' : 'animate-in fade-in slide-in-from-bottom-5 duration-500'}`}>
-        <BoutiqueSelect
-          value={slideshowInterval}
-          onChange={setSlideshowInterval}
-          options={[2, 3, 5, 8, 10]}
-          title="Slideshow Interval"
-          dropUp
-        />
-        <div className="w-px h-8 bg-white/10 hidden sm:block" />
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            (event.currentTarget as HTMLElement).blur();
-            navigateToPost('prev');
-          }}
-          disabled={loading}
-          title="Previous Post"
-          className="lightbox-control-btn text-white transition-all p-2 rounded-full cursor-pointer min-w-[44px] min-h-[44px]"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
-        </button>
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            setIsPlaying((playing) => !playing);
-          }}
-          title={isPlaying ? 'Pause Slideshow' : 'Start Slideshow'}
-          className={`lightbox-play-btn min-w-[44px] min-h-[44px] ${!isPlaying ? 'opacity-80' : ''}`}
-        >
-          {isPlaying ? (
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="ml-0.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            (event.currentTarget as HTMLElement).blur();
-            navigateToPost('next');
-          }}
-          disabled={loading}
-          title="Next Post"
-          className="lightbox-control-btn text-white transition-all p-2 rounded-full cursor-pointer min-w-[44px] min-h-[44px]"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
-        </button>
-      </div>
-    </div>
-  </div>
-);
-
-const PostVideoPlayer = forwardRef(function PostVideoPlayer(
-  {
-    poster,
-    src,
-    className,
-    style,
-    showControls,
-    muted,
-    onTap,
-  }: {
-    poster?: string;
-    src: string;
-    className?: string;
-    style?: React.CSSProperties;
-    showControls?: boolean;
-    muted?: boolean;
-    onTap?: () => void;
-  },
-  ref: React.Ref<HTMLVideoElement>
-) {
-  const [buffering, setBuffering] = useState(false);
-  const bufferTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearBufferTimer = useCallback(() => {
-    if (bufferTimer.current) {
-      clearTimeout(bufferTimer.current);
-      bufferTimer.current = null;
-    }
-  }, []);
-
-  const markBuffering = useCallback(() => {
-    clearBufferTimer();
-    bufferTimer.current = setTimeout(() => setBuffering(true), 280);
-  }, [clearBufferTimer]);
-
-  const markReady = useCallback(() => {
-    clearBufferTimer();
-    setBuffering(false);
-  }, [clearBufferTimer]);
-
-  useEffect(() => () => clearBufferTimer(), [clearBufferTimer]);
-
-  return (
-    <div className="relative flex items-center justify-center max-w-full max-h-full">
-      <video
-        ref={ref}
-        src={src}
-        poster={poster}
-        controls={showControls}
-        muted={muted}
-        autoPlay
-        loop
-        playsInline
-        preload="auto"
-        onWaiting={markBuffering}
-        onPlaying={markReady}
-        onCanPlay={markReady}
-        onLoadedData={markReady}
-        onClick={(e) => {
-          e.stopPropagation();
-          onTap?.();
-        }}
-        className={className}
-        style={style}
-      />
-      {buffering && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/75 border border-white/10 pointer-events-none backdrop-blur-sm">
-          <div className="w-3 h-3 border-2 border-theme-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-300">Loading</span>
-        </div>
-      )}
-    </div>
-  );
-});
-
-const BoutiqueSelect = ({ value, onChange, options, title, dropUp }: {
-  value: number, 
-  onChange: (v: number) => void, 
-  options: number[],
-  title?: string
-  dropUp?: boolean
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
-  }, []);
-
-  const selectOption = (opt: number) => {
-    onChange(opt);
-    setIsOpen(false);
-  };
-
-  return (
-    <div className="boutique-select relative z-[100000012]" ref={containerRef} onClick={(e) => e.stopPropagation()}>
-      <button 
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="boutique-select-trigger bg-black/40 border border-white/10 text-[10px] font-bold text-white px-3 py-2 rounded-lg flex items-center gap-3 hover:border-theme-primary/50 transition-all cursor-pointer min-w-[65px] min-h-[44px] justify-between shadow-inner touch-manipulation"
-        title={title}
-      >
-        <span>{value}s</span>
-        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}><path d="m6 9 6 6 6-6"/></svg>
-      </button>
-      
-      {isOpen && (
-        <div
-          className={`boutique-select-menu absolute left-0 w-full min-w-[72px] glass-panel overflow-hidden z-[100000013] animate-in fade-in duration-200 shadow-2xl border border-white/10 pointer-events-auto touch-manipulation ${
-            dropUp ? 'bottom-full mb-2 slide-in-from-bottom-2' : 'top-full mt-2 slide-in-from-top-2'
-          }`}
-        >
-          <div className="flex flex-col p-1 bg-zinc-950/90 backdrop-blur-xl">
-            {options.map(opt => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => selectOption(opt)}
-                onTouchEnd={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  selectOption(opt);
-                }}
-                className={`boutique-select-option w-full px-3 py-2.5 text-[10px] font-bold text-left rounded-md transition-all cursor-pointer min-h-[44px] touch-manipulation ${value === opt ? 'bg-theme-primary text-black' : 'text-zinc-400 hover:bg-white/10 hover:text-white'}`}
-              >
-                {opt}s
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 const App = ({ initialData }: { initialData: PageData }) => {
   const [data, setData] = useState<PageData>(initialData);
   const [loading, setLoading] = useState(false);
@@ -387,29 +79,18 @@ const App = ({ initialData }: { initialData: PageData }) => {
   const [gridSize, setGridSize] = useState<number>(() => {
     const fromUrl = Number(currentParams.get('r34_gs'));
     if (fromUrl) return fromUrl;
-    const mobile =
-      typeof window !== 'undefined' &&
-      (window.matchMedia('(max-width: 900px)').matches || !!(window as any).R34ProAndroid);
-    return mobile ? 2 : 4;
+    return defaultGridSize();
   });
 
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia('(max-width: 900px)').matches || !!(window as any).R34ProAndroid;
-  });
-  const [isLandscape, setIsLandscape] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia('(orientation: landscape)').matches;
-  });
+  const [isMobile, setIsMobile] = useState(isMobileViewport);
+  const [isLandscape, setIsLandscape] = useState(detectLandscape);
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
-    const android = !!(window as any).R34ProAndroid;
-    if (android) return false;
-    const mobile = window.matchMedia('(max-width: 900px)').matches;
-    return !mobile;
+    if (detectAndroidApp()) return false;
+    return !isMobileViewport();
   });
 
-  const isAndroidApp = typeof window !== 'undefined' && !!(window as any).R34ProAndroid;
+  const isAndroidApp = detectAndroidApp();
   const showSearchLanding =
     isAndroidApp &&
     initialData.type === 'list' &&
@@ -534,12 +215,15 @@ const App = ({ initialData }: { initialData: PageData }) => {
 
   useEffect(() => {
     if (initialData.type === 'account') return;
-    refreshAccountSession();
     chrome.storage.local.get('r34proSession').then((stored) => {
       if (stored.r34proSession?.isLoggedIn) {
         setAccountSession(stored.r34proSession as AccountSession);
       }
     });
+    const refreshTimer = window.setTimeout(() => {
+      refreshAccountSession();
+    }, ACCOUNT_SESSION_DEFER_MS);
+    return () => window.clearTimeout(refreshTimer);
   }, [initialData.type, refreshAccountSession]);
 
   const showProfileNotice = useCallback((message: string) => {
@@ -600,7 +284,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
     if (lightboxUiTimer.current) clearTimeout(lightboxUiTimer.current);
     lightboxUiTimer.current = setTimeout(() => {
       setLightboxUiVisible(false);
-    }, 4000);
+    }, LIGHTBOX_UI_HIDE_MS);
   }, [isAndroidApp]);
 
   const resetLightboxUiTimer = useCallback(() => {
