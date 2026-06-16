@@ -7,10 +7,10 @@ import { BoutiqueSelect } from '../components/ui/BoutiqueSelect';
 import {
   ACCOUNT_SESSION_DEFER_MS,
   LIGHTBOX_UI_HIDE_MS,
-  MAX_ZOOM_SCALE,
-  MIN_PINCH_DISTANCE,
   VIDEO_SLIDESHOW_RATIO,
 } from '../lib/constants';
+import { useMediaWheelZoom, useMediaZoomGestures } from '../hooks/useMediaZoomGestures';
+import { clampPanToBounds, ZOOM_SNAP_THRESHOLD } from '../lib/zoomMath';
 import {
   defaultGridSize,
   effectiveGridColumns,
@@ -140,8 +140,6 @@ const App = ({ initialData }: { initialData: PageData }) => {
   const mainContentRef = useRef<HTMLDivElement>(null);
   const postGestureRef = useRef<HTMLDivElement>(null);
   const lightboxGestureRef = useRef<HTMLDivElement>(null);
-  const touchGestureRef = useRef<'none' | 'pan' | 'pinch' | 'swipe'>('none');
-  const swipeHandledRef = useRef(false);
   const scaleRef = useRef(1);
   const positionRef = useRef({ x: 0, y: 0 });
   const lightboxOpenRef = useRef(lightboxOpen);
@@ -464,36 +462,6 @@ const App = ({ initialData }: { initialData: PageData }) => {
   }, [data.type, data.type === 'post' ? data.mediaType : null, data.type === 'post' ? data.nextUrl : null, data.type === 'post' ? data.prevUrl : null, postId]);
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.2 : 0.2;
-      const newScale = Math.min(Math.max(1, scale + delta), MAX_ZOOM_SCALE);
-      
-      if (newScale !== scale) {
-        const mediaEl = imageRef.current ?? videoRef.current;
-        const rect = mediaEl?.getBoundingClientRect();
-        if (rect) {
-          const mouseX = e.clientX - rect.left;
-          const mouseY = e.clientY - rect.top;
-          const ratio = newScale / scale;
-          
-          setPosition(pos => ({
-            x: pos.x - (mouseX * ratio - mouseX),
-            y: pos.y - (mouseY * ratio - mouseY)
-          }));
-        }
-        setScale(newScale);
-      }
-    };
-
-    container.addEventListener('wheel', handleWheel, { passive: false });
-    return () => container.removeEventListener('wheel', handleWheel);
-  }, [lightboxOpen, scale]);
-
-  useEffect(() => {
     if (data.type !== 'post' || data.mediaType !== 'video') {
       setSlideMaxTicks(slideshowInterval * 10);
       return;
@@ -607,6 +575,83 @@ const App = ({ initialData }: { initialData: PageData }) => {
   useEffect(() => { resetLightboxUiTimerRef.current = resetLightboxUiTimer; }, [resetLightboxUiTimer]);
   useEffect(() => { toggleAndroidLightboxUiRef.current = toggleAndroidLightboxUi; }, [toggleAndroidLightboxUi]);
 
+  const isGestureChromeTarget = useCallback((target: EventTarget | null) => {
+    if (!(target instanceof Element)) return false;
+    return !!target.closest(
+      '.lightbox-chrome-root, .lightbox-chrome-top, .lightbox-chrome-bottom, .lightbox-chrome-btn, .lightbox-top-actions, .lightbox-mobile-controls, .boutique-select, .boutique-select-menu, .boutique-select-option, button, a, input, select'
+    );
+  }, []);
+
+  const postMediaType = data.type === 'post' ? data.mediaType : null;
+
+  const { attachGestureLayer: attachPostGestures } = useMediaZoomGestures({
+    enabled: isMobile && data.type === 'post' && !lightboxOpen,
+    getContainer: () => postViewContainerRef.current,
+    getMediaElement: () =>
+      postMediaType === 'video' ? videoRef.current : postImageRef.current,
+    scaleRef,
+    positionRef,
+    setScale,
+    setPosition,
+    setIsDragging,
+    isChromeTarget: isGestureChromeTarget,
+    onSwipePrev: () => navigateToPostRef.current('prev'),
+    onSwipeNext: () => navigateToPostRef.current('next'),
+    onSingleTap: () => openLightboxRef.current(),
+    canSwipeNavigate: () => (scaleRef.current ?? 1) <= ZOOM_SNAP_THRESHOLD,
+    canSwipeDownClose: () => false,
+  });
+
+  const { attachGestureLayer: attachLightboxGestures } = useMediaZoomGestures({
+    enabled: isMobile && data.type === 'post' && lightboxOpen,
+    getContainer: () =>
+      postMediaType === 'video' ? postViewContainerRef.current : containerRef.current,
+    getMediaElement: () =>
+      postMediaType === 'video' ? videoRef.current : imageRef.current,
+    scaleRef,
+    positionRef,
+    setScale,
+    setPosition,
+    setIsDragging,
+    isChromeTarget: isGestureChromeTarget,
+    onPinchActivity: () => {
+      if (isAndroidAppRef.current) resetLightboxUiTimerRef.current();
+    },
+    onSwipePrev: () => navigateToPostRef.current('prev'),
+    onSwipeNext: () => navigateToPostRef.current('next'),
+    onSingleTap: () => {
+      if (isAndroidAppRef.current) toggleAndroidLightboxUiRef.current();
+    },
+    onSwipeDownClose: () => closeLightboxRef.current(),
+    canSwipeNavigate: () => (scaleRef.current ?? 1) <= ZOOM_SNAP_THRESHOLD,
+    canSwipeDownClose: () => lightboxOpenRef.current,
+  });
+
+  useEffect(() => {
+    if (!isMobile || data.type !== 'post' || lightboxOpen) return;
+    return attachPostGestures(postGestureRef.current);
+  }, [isMobile, data.type, lightboxOpen, postId, postMediaType, attachPostGestures]);
+
+  useEffect(() => {
+    if (!isMobile || data.type !== 'post' || !lightboxOpen) return;
+    const layer =
+      postMediaType === 'video' ? postViewContainerRef.current : lightboxGestureRef.current;
+    return attachLightboxGestures(layer);
+  }, [isMobile, data.type, lightboxOpen, postId, postMediaType, attachLightboxGestures]);
+
+  useMediaWheelZoom({
+    enabled: lightboxOpen && data.type === 'post',
+    getContainer: () =>
+      postMediaType === 'video' ? postViewContainerRef.current : containerRef.current,
+    getMediaElement: () =>
+      postMediaType === 'video' ? videoRef.current : imageRef.current,
+    scaleRef,
+    positionRef,
+    setScale,
+    setPosition,
+    resetDeps: [postId, lightboxOpen, postMediaType],
+  });
+
   const fetchNeighbors = useCallback(async (postId: string, tags: string) => {
     try {
       const baseUrl = `${RULE34_ORIGIN}/public/post_helpers2.php?action=fetch_id_cache`;
@@ -706,170 +751,6 @@ const App = ({ initialData }: { initialData: PageData }) => {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [navigateToPost, setIsPlaying, isPlaying, lightboxOpen]);
-
-  useEffect(() => {
-    if (!isMobile || data.type !== 'post') return;
-
-    const postMediaType = data.mediaType;
-    const container = lightboxOpen
-      ? (postMediaType === 'video' ? postViewContainerRef.current : lightboxGestureRef.current)
-      : postGestureRef.current;
-    if (!container) return;
-
-    let startX = 0;
-    let startY = 0;
-    let lastPinchDistance = 0;
-    let pinchReady = false;
-    let gesture: 'none' | 'pan' | 'pinch' | 'swipe' = 'none';
-
-    const getDistance = (touches: TouchList) => {
-      if (touches.length < 2) return 0;
-      const dx = touches[0].clientX - touches[1].clientX;
-      const dy = touches[0].clientY - touches[1].clientY;
-      return Math.hypot(dx, dy);
-    };
-
-    const isChromeTarget = (target: EventTarget | null) => {
-      if (!(target instanceof Element)) return false;
-      return !!target.closest('.lightbox-chrome-root, .lightbox-chrome-top, .lightbox-chrome-bottom, .lightbox-chrome-btn, .lightbox-top-actions, .lightbox-mobile-controls, .boutique-select, .boutique-select-menu, .boutique-select-option, button, a, input, select');
-    };
-
-    const onTouchStart = (event: TouchEvent) => {
-      if (isChromeTarget(event.target)) return;
-      swipeHandledRef.current = false;
-      if (event.touches.length === 2) {
-        gesture = 'pinch';
-        touchGestureRef.current = 'pinch';
-        lastPinchDistance = getDistance(event.touches);
-        pinchReady = lastPinchDistance >= MIN_PINCH_DISTANCE;
-        if (isAndroidAppRef.current && lightboxOpenRef.current) {
-          resetLightboxUiTimerRef.current();
-        }
-        return;
-      }
-
-      if (event.touches.length === 1) {
-        startX = event.touches[0].clientX;
-        startY = event.touches[0].clientY;
-        if (scaleRef.current > 1) {
-          gesture = 'pan';
-          touchGestureRef.current = 'pan';
-          dragStart.current = { x: startX - positionRef.current.x, y: startY - positionRef.current.y };
-          setIsDragging(true);
-        } else {
-          gesture = 'none';
-          touchGestureRef.current = 'none';
-        }
-      }
-    };
-
-    const onTouchMove = (event: TouchEvent) => {
-      if (gesture === 'pinch' && event.touches.length === 2) {
-        event.preventDefault();
-        const distance = getDistance(event.touches);
-        if (!pinchReady) {
-          if (distance < MIN_PINCH_DISTANCE) return;
-          pinchReady = true;
-          lastPinchDistance = distance;
-          return;
-        }
-        if (lastPinchDistance <= 0) {
-          lastPinchDistance = distance;
-          return;
-        }
-        const factor = Math.max(0.88, Math.min(1.12, distance / lastPinchDistance));
-        const nextScale = Math.min(MAX_ZOOM_SCALE, Math.max(1, scaleRef.current * factor));
-        setScale(nextScale);
-        if (nextScale <= 1) setPosition({ x: 0, y: 0 });
-        lastPinchDistance = distance;
-        return;
-      }
-
-      if (gesture === 'pan' && event.touches.length === 1 && scaleRef.current > 1) {
-        event.preventDefault();
-        setPosition({
-          x: event.touches[0].clientX - dragStart.current.x,
-          y: event.touches[0].clientY - dragStart.current.y,
-        });
-        return;
-      }
-
-      if (event.touches.length === 1 && scaleRef.current <= 1 && gesture !== 'pinch') {
-        const dx = event.touches[0].clientX - startX;
-        const dy = event.touches[0].clientY - startY;
-        if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.1) {
-          gesture = 'swipe';
-          touchGestureRef.current = 'swipe';
-          event.preventDefault();
-        }
-      }
-    };
-
-    const onTouchEnd = (event: TouchEvent) => {
-      const touch = event.changedTouches[0];
-      if (!touch) return;
-
-      const deltaX = touch.clientX - startX;
-      const deltaY = touch.clientY - startY;
-      const travel = Math.hypot(deltaX, deltaY);
-
-      if (gesture === 'pinch' || gesture === 'pan') {
-        gesture = 'none';
-        touchGestureRef.current = 'none';
-        setIsDragging(false);
-        if (scaleRef.current <= 1.05) {
-          setScale(1);
-          setPosition({ x: 0, y: 0 });
-        }
-        return;
-      }
-
-      if (scaleRef.current > 1) {
-        gesture = 'none';
-        touchGestureRef.current = 'none';
-        return;
-      }
-
-      if (lightboxOpenRef.current && deltaY > 90 && deltaY > Math.abs(deltaX) * 1.3) {
-        closeLightboxRef.current();
-        gesture = 'none';
-        touchGestureRef.current = 'none';
-        return;
-      }
-
-      if (
-        gesture === 'swipe' ||
-        (Math.abs(deltaX) >= 48 && Math.abs(deltaX) > Math.abs(deltaY) * 1.1)
-      ) {
-        swipeHandledRef.current = true;
-        if (deltaX > 0) navigateToPostRef.current('prev');
-        else navigateToPostRef.current('next');
-        gesture = 'none';
-        touchGestureRef.current = 'none';
-        return;
-      }
-
-      if (travel < 14 && !swipeHandledRef.current) {
-        if (lightboxOpenRef.current) {
-          if (isAndroidAppRef.current) toggleAndroidLightboxUiRef.current();
-        } else {
-          openLightboxRef.current();
-        }
-      }
-
-      gesture = 'none';
-      touchGestureRef.current = 'none';
-    };
-
-    container.addEventListener('touchstart', onTouchStart, { passive: true });
-    container.addEventListener('touchmove', onTouchMove, { passive: false });
-    container.addEventListener('touchend', onTouchEnd, { passive: true });
-    return () => {
-      container.removeEventListener('touchstart', onTouchStart);
-      container.removeEventListener('touchmove', onTouchMove);
-      container.removeEventListener('touchend', onTouchEnd);
-    };
-  }, [isMobile, data.type, data.type === 'post' ? data.mediaType : null, lightboxOpen, postId]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -1164,8 +1045,8 @@ const App = ({ initialData }: { initialData: PageData }) => {
                       </h2>
                       <p className="text-zinc-400 text-lg font-medium leading-relaxed max-w-[90%] mx-auto !m-0 !p-0">
                         {isMobile
-                          ? <>Swipe left or right to move between posts. Use the bottom bar for prev/next, fullscreen, and slideshow. Pinch to zoom in lightbox.</>
-                          : <>Use <strong>A / D</strong> or arrows to move between posts. Press <strong>S</strong> for slideshow and <strong>F</strong> for fullscreen lightbox.</>}
+                          ? <>Pinch or double-tap to zoom. Swipe left or right for the next post. Swipe down to close the lightbox.</>
+                          : <>Use <strong>A / D</strong> or arrows to move between posts. Press <strong>S</strong> for slideshow and <strong>F</strong> for fullscreen lightbox. Scroll to zoom in lightbox.</>}
                       </p>
                    </div>
                  </>
@@ -1803,7 +1684,6 @@ const App = ({ initialData }: { initialData: PageData }) => {
                    poster={data.imageUrl}
                    showControls={lightboxOpen}
                    muted={videoMuted}
-                   onTap={isAndroidApp && lightboxOpen ? toggleAndroidLightboxUi : undefined}
                    className={`mobile-post-media max-w-full max-h-full object-contain transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${lightboxOpen ? 'max-h-[85vh] shadow-2xl rounded-lg' : ''} ${scale <= 1 && !lightboxOpen ? 'group-hover:scale-[1.02]' : ''}`}
                    style={scale > 1 ? { transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`, transformOrigin: 'center center' } : undefined}
                  />
@@ -2025,29 +1905,38 @@ const App = ({ initialData }: { initialData: PageData }) => {
             ref={containerRef}
             className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
             onMouseDown={(e) => {
-              if (scale > 1) {
+              if (scale > ZOOM_SNAP_THRESHOLD) {
                 setIsDragging(true);
                 dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
               }
             }}
             onMouseMove={(e) => {
-              if (isDragging && scale > 1) {
-                setPosition({
+              if (isDragging && scale > ZOOM_SNAP_THRESHOLD) {
+                const containerRect = containerRef.current?.getBoundingClientRect();
+                const mediaRect = imageRef.current?.getBoundingClientRect() ?? null;
+                const next = {
                   x: e.clientX - dragStart.current.x,
-                  y: e.clientY - dragStart.current.y
-                });
+                  y: e.clientY - dragStart.current.y,
+                };
+                setPosition(
+                  containerRect
+                    ? clampPanToBounds(next, scale, containerRect, mediaRect)
+                    : next
+                );
               }
             }}
-            onMouseUp={() => setIsDragging(false)}
+            onMouseUp={() => {
+              setIsDragging(false);
+              if (scale <= ZOOM_SNAP_THRESHOLD) {
+                setScale(1);
+                setPosition({ x: 0, y: 0 });
+              }
+            }}
             onMouseLeave={() => setIsDragging(false)}
           >
             <div
               ref={lightboxGestureRef}
               className="relative max-w-full max-h-full pointer-events-auto mobile-gesture-layer lightbox-media-gesture-layer touch-manipulation"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (isAndroidApp) toggleAndroidLightboxUi();
-              }}
             >
               <img
                 ref={imageRef}
