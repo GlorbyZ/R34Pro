@@ -10,7 +10,7 @@ import {
   VIDEO_SLIDESHOW_RATIO,
 } from '../lib/constants';
 import { useMediaWheelZoom, useMediaZoomGestures } from '../hooks/useMediaZoomGestures';
-import { clampPanToBounds, ZOOM_SNAP_THRESHOLD } from '../lib/zoomMath';
+import { clampPanToBounds, canPanZoom, DEFAULT_ZOOM_SCALE, isDefaultZoom } from '../lib/zoomMath';
 import {
   defaultGridSize,
   effectiveGridColumns,
@@ -598,7 +598,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
     onSwipePrev: () => navigateToPostRef.current('prev'),
     onSwipeNext: () => navigateToPostRef.current('next'),
     onSingleTap: () => openLightboxRef.current(),
-    canSwipeNavigate: () => (scaleRef.current ?? 1) <= ZOOM_SNAP_THRESHOLD,
+    canSwipeNavigate: () => isDefaultZoom(scaleRef.current ?? 1),
     canSwipeDownClose: () => false,
   });
 
@@ -623,7 +623,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
       if (isAndroidAppRef.current) toggleAndroidLightboxUiRef.current();
     },
     onSwipeDownClose: () => closeLightboxRef.current(),
-    canSwipeNavigate: () => (scaleRef.current ?? 1) <= ZOOM_SNAP_THRESHOLD,
+    canSwipeNavigate: () => isDefaultZoom(scaleRef.current ?? 1),
     canSwipeDownClose: () => lightboxOpenRef.current,
   });
 
@@ -1045,7 +1045,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
                       </h2>
                       <p className="text-zinc-400 text-lg font-medium leading-relaxed max-w-[90%] mx-auto !m-0 !p-0">
                         {isMobile
-                          ? <>Pinch or double-tap to zoom. Swipe left or right for the next post. Swipe down to close the lightbox.</>
+                          ? <>Pinch to zoom in or out. Double-tap to zoom in or reset. Swipe for the next post.</>
                           : <>Use <strong>A / D</strong> or arrows to move between posts. Press <strong>S</strong> for slideshow and <strong>F</strong> for fullscreen lightbox. Scroll to zoom in lightbox.</>}
                       </p>
                    </div>
@@ -1674,7 +1674,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
               ref={postViewContainerRef}
               className={`mobile-post-stage relative w-full h-full rounded-2xl overflow-hidden flex items-center justify-center group transition-all duration-300 ${
                 lightboxOpen ? 'fixed inset-0 z-[99999998] bg-black/98 rounded-none mobile-post-lightbox' : ''
-              } ${scale > 1 ? 'cursor-grab' : 'cursor-zoom-in'}`}
+              } ${canPanZoom(scale) ? 'cursor-grab' : 'cursor-zoom-in'}`}
             >
                {data.mediaType === 'video' ? (
                  <PostVideoPlayer
@@ -1684,16 +1684,16 @@ const App = ({ initialData }: { initialData: PageData }) => {
                    poster={data.imageUrl}
                    showControls={lightboxOpen}
                    muted={videoMuted}
-                   className={`mobile-post-media max-w-full max-h-full object-contain transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${lightboxOpen ? 'max-h-[85vh] shadow-2xl rounded-lg' : ''} ${scale <= 1 && !lightboxOpen ? 'group-hover:scale-[1.02]' : ''}`}
-                   style={scale > 1 ? { transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`, transformOrigin: 'center center' } : undefined}
+                   className={`mobile-post-media max-w-full max-h-full object-contain transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${lightboxOpen ? 'max-h-[85vh] shadow-2xl rounded-lg' : ''} ${isDefaultZoom(scale) && !lightboxOpen ? 'group-hover:scale-[1.02]' : ''}`}
+                   style={!isDefaultZoom(scale) ? { transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`, transformOrigin: 'center center' } : undefined}
                  />
                ) : (
                  <img 
                    ref={postImageRef}
                    key={data.imageUrl}
                    src={data.imageUrl} 
-                   className={`max-w-full max-h-full object-contain transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${loading ? 'opacity-0 scale-95' : 'opacity-100'} ${scale <= 1 ? 'group-hover:scale-[1.02]' : ''}`}
-                   style={scale > 1 ? { transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`, transformOrigin: 'center center' } : undefined}
+                   className={`max-w-full max-h-full object-contain transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${loading ? 'opacity-0 scale-95' : 'opacity-100'} ${isDefaultZoom(scale) ? 'group-hover:scale-[1.02]' : ''}`}
+                   style={!isDefaultZoom(scale) ? { transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`, transformOrigin: 'center center' } : undefined}
                    alt="Post Image"
                    draggable={false}
                  />
@@ -1905,13 +1905,13 @@ const App = ({ initialData }: { initialData: PageData }) => {
             ref={containerRef}
             className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
             onMouseDown={(e) => {
-              if (scale > ZOOM_SNAP_THRESHOLD) {
+              if (canPanZoom(scale)) {
                 setIsDragging(true);
                 dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
               }
             }}
             onMouseMove={(e) => {
-              if (isDragging && scale > ZOOM_SNAP_THRESHOLD) {
+              if (isDragging && canPanZoom(scale)) {
                 const containerRect = containerRef.current?.getBoundingClientRect();
                 const mediaRect = imageRef.current?.getBoundingClientRect() ?? null;
                 const next = {
@@ -1927,8 +1927,8 @@ const App = ({ initialData }: { initialData: PageData }) => {
             }}
             onMouseUp={() => {
               setIsDragging(false);
-              if (scale <= ZOOM_SNAP_THRESHOLD) {
-                setScale(1);
+              if (isDefaultZoom(scale)) {
+                setScale(DEFAULT_ZOOM_SCALE);
                 setPosition({ x: 0, y: 0 });
               }
             }}
@@ -1946,7 +1946,7 @@ const App = ({ initialData }: { initialData: PageData }) => {
                   maxWidth: '100%',
                   maxHeight: '100%',
                   objectFit: 'contain',
-                  cursor: scale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'crosshair',
+                  cursor: canPanZoom(scale) ? (isDragging ? 'grabbing' : 'grab') : 'crosshair',
                   transformOrigin: 'center center',
                 }}
                 className={`shadow-2xl rounded-lg transition-transform ${isDragging ? 'duration-0' : 'duration-300'} ${loading ? 'opacity-50' : 'opacity-100'}`}

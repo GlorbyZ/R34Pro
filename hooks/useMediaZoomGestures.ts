@@ -3,16 +3,17 @@ import { MAX_ZOOM_SCALE, MIN_PINCH_DISTANCE } from '../lib/constants';
 import {
   clampPanToBounds,
   clampScale,
+  canPanZoom,
+  DEFAULT_ZOOM_SCALE,
   DOUBLE_TAP_DELAY_MS,
   DOUBLE_TAP_SLOP_PX,
   DOUBLE_TAP_ZOOM_SCALE,
-  MIN_ZOOM_SCALE,
+  isDefaultZoom,
   snapZoom,
   touchCentroid,
   touchDistance,
   type Vec2,
   zoomAtContainerPoint,
-  ZOOM_SNAP_THRESHOLD,
 } from '../lib/zoomMath';
 
 export type ZoomGestureMode = 'none' | 'pan' | 'pinch' | 'swipe';
@@ -69,7 +70,7 @@ export function useMediaZoomGestures(options: MediaZoomGestureOptions) {
       const containerRect = container?.getBoundingClientRect();
       const mediaRect = media?.getBoundingClientRect() ?? null;
       const clamped =
-        containerRect && scale > MIN_ZOOM_SCALE
+        containerRect && canPanZoom(scale)
           ? clampPanToBounds(position, scale, containerRect, mediaRect)
           : position;
       opts.setScale(scale);
@@ -95,7 +96,7 @@ export function useMediaZoomGestures(options: MediaZoomGestureOptions) {
         startX = event.touches[0].clientX;
         startY = event.touches[0].clientY;
         const currentScale = opts.scaleRef.current ?? 1;
-        if (currentScale > ZOOM_SNAP_THRESHOLD) {
+        if (canPanZoom(currentScale)) {
           gesture = 'pan';
           const pos = opts.positionRef.current ?? { x: 0, y: 0 };
           opts.setIsDragging(true);
@@ -151,7 +152,7 @@ export function useMediaZoomGestures(options: MediaZoomGestureOptions) {
 
       if (gesture === 'pan' && event.touches.length === 1) {
         const currentScale = opts.scaleRef.current ?? 1;
-        if (currentScale <= ZOOM_SNAP_THRESHOLD) return;
+        if (!canPanZoom(currentScale)) return;
         event.preventDefault();
         const offset = (element as any).__panOffset as Vec2 | undefined;
         if (!offset) return;
@@ -162,7 +163,7 @@ export function useMediaZoomGestures(options: MediaZoomGestureOptions) {
         return;
       }
 
-      if (event.touches.length === 1 && (opts.scaleRef.current ?? 1) <= MIN_ZOOM_SCALE && gesture !== 'pinch') {
+      if (event.touches.length === 1 && isDefaultZoom(opts.scaleRef.current ?? 1) && gesture !== 'pinch') {
         const dx = event.touches[0].clientX - startX;
         const dy = event.touches[0].clientY - startY;
         if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 1.15) {
@@ -185,8 +186,8 @@ export function useMediaZoomGestures(options: MediaZoomGestureOptions) {
         gesture = 'none';
         opts.setIsDragging(false);
         const snapped = snapZoom(opts.scaleRef.current ?? 1);
-        if (snapped.scale <= MIN_ZOOM_SCALE) {
-          opts.setScale(MIN_ZOOM_SCALE);
+        if (isDefaultZoom(snapped.scale)) {
+          opts.setScale(DEFAULT_ZOOM_SCALE);
           opts.setPosition({ x: 0, y: 0 });
         } else {
           const container = opts.getContainer();
@@ -201,7 +202,7 @@ export function useMediaZoomGestures(options: MediaZoomGestureOptions) {
         return;
       }
 
-      if ((opts.scaleRef.current ?? 1) > ZOOM_SNAP_THRESHOLD) {
+      if (!isDefaultZoom(opts.scaleRef.current ?? 1)) {
         gesture = 'none';
         return;
       }
@@ -236,12 +237,12 @@ export function useMediaZoomGestures(options: MediaZoomGestureOptions) {
           const currentScale = opts.scaleRef.current ?? 1;
           if (!containerRect) return;
 
-          if (currentScale > ZOOM_SNAP_THRESHOLD) {
-            opts.setScale(MIN_ZOOM_SCALE);
+          if (!isDefaultZoom(currentScale)) {
+            opts.setScale(DEFAULT_ZOOM_SCALE);
             opts.setPosition({ x: 0, y: 0 });
           } else {
             const { scale, position } = zoomAtContainerPoint(
-              1,
+              DEFAULT_ZOOM_SCALE,
               { x: 0, y: 0 },
               DOUBLE_TAP_ZOOM_SCALE,
               touch.clientX,
@@ -324,7 +325,7 @@ export function useMediaWheelZoom(options: {
       const mediaRect = opts.getMediaElement()?.getBoundingClientRect() ?? null;
       opts.setScale(scale);
       opts.setPosition(
-        scale > MIN_ZOOM_SCALE && mediaRect
+        canPanZoom(scale) && mediaRect
           ? clampPanToBounds(position, scale, containerRect, mediaRect)
           : { x: 0, y: 0 }
       );
